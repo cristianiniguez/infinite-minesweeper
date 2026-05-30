@@ -1,0 +1,15 @@
+{
+  "name": "@repo/supabase",
+  "version": "0.0.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@repo/minesweeper-core": "workspace:*",
+    "@supabase/supabase-js": "2.50.0"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}
