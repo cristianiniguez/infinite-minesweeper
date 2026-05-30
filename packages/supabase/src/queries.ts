@@ -58,6 +58,7 @@ export async function upsertGameState(
       flagged_cells: serialised.flagged as unknown as Json,
       blocked_sectors: serialised.blocked as unknown as Json,
       solved_sectors: serialised.solved as unknown as Json,
+      mine_hits: serialised.mineHits as unknown as Json,
       saved_at: new Date().toISOString(),
     },
     { onConflict: 'game_id' },

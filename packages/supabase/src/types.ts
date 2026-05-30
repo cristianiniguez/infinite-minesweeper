@@ -23,6 +23,7 @@ export type Database = {
           flagged_cells: Json
           game_id: string
           id: string
+          mine_hits: Json
           revealed_cells: Json
           saved_at: string
           solved_sectors: Json
@@ -35,6 +36,7 @@ export type Database = {
           flagged_cells?: Json
           game_id: string
           id?: string
+          mine_hits?: Json
           revealed_cells?: Json
           saved_at?: string
           solved_sectors?: Json
@@ -47,6 +49,7 @@ export type Database = {
           flagged_cells?: Json
           game_id?: string
           id?: string
+          mine_hits?: Json
           revealed_cells?: Json
           saved_at?: string
           solved_sectors?: Json

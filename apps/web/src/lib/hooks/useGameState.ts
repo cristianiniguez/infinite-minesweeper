@@ -9,13 +9,14 @@ function initState(args: { seed: number; dbState: DbGameState | null }): GameSta
   if (args.dbState) {
     return deserialise({
       seed: args.seed,
-      firstReveal: true,
+      firstReveal: ((args.dbState.revealed_cells as string[]) ?? []).length > 0,
       camX: args.dbState.cam_x,
       camY: args.dbState.cam_y,
       revealed: (args.dbState.revealed_cells as string[]) ?? [],
       flagged: (args.dbState.flagged_cells as string[]) ?? [],
       blocked: (args.dbState.blocked_sectors as string[]) ?? [],
       solved: (args.dbState.solved_sectors as string[]) ?? [],
+      mineHits: (args.dbState.mine_hits as string[]) ?? [],
     });
   }
   return createInitialState(args.seed);

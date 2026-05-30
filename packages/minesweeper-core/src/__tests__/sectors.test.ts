@@ -68,13 +68,13 @@ describe('checkSectorSolved', () => {
 describe('blockSector', () => {
   it('adds the sector to blocked', () => {
     const state = createInitialState(SEED);
-    const next = blockSector(state, 1, 2);
+    const next = blockSector(state, 1, 2, 16, 32);
     expect(next.blocked.has(sectorKey(1, 2))).toBe(true);
   });
 
   it('does not mutate the original state', () => {
     const state = createInitialState(SEED);
-    blockSector(state, 0, 0);
+    blockSector(state, 0, 0, 0, 0);
     expect(state.blocked.size).toBe(0);
   });
 });

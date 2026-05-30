@@ -13,6 +13,8 @@ export interface GameState {
   blocked: Set<SectorKey>;
   /** Sectors where all non-mine cells have been revealed */
   solved: Set<SectorKey>;
+  /** Cells where a mine was clicked — derived from session actions, not persisted */
+  mineHits: Set<CellKey>;
   /** Cached mine results — derived from seed, not persisted */
   mineCache: Map<CellKey, boolean>;
   /** Cached adjacent-mine counts — derived from seed, not persisted */
@@ -52,6 +54,7 @@ export function createInitialState(seed: number): GameState {
     flagged: new Set(),
     blocked: new Set(),
     solved: new Set(),
+    mineHits: new Set(),
     mineCache: new Map(),
     numberCache: new Map(),
   };

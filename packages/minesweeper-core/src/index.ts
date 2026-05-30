@@ -42,7 +42,7 @@ export function applyAction(state: GameState, action: Action): GameState {
           newRevealed.add(key);
           newState = { ...newState, revealed: newRevealed };
         } else {
-          return blockSector(newState, sx, sy);
+          return blockSector(newState, sx, sy, x, y);
         }
       } else {
         newState = floodReveal(newState, x, y);
@@ -57,6 +57,8 @@ export function applyAction(state: GameState, action: Action): GameState {
       const { x, y } = action;
       const key = cellKey(x, y);
       if (state.revealed.has(key)) return state;
+      const [fsx, fsy] = getSector(x, y);
+      if (state.blocked.has(sectorKey(fsx, fsy))) return state;
       const newFlagged = new Set(state.flagged);
       if (newFlagged.has(key)) {
         newFlagged.delete(key);

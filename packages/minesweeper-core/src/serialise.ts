@@ -9,6 +9,7 @@ export interface Serialised {
   flagged: CellKey[];
   blocked: SectorKey[];
   solved: SectorKey[];
+  mineHits: CellKey[];
 }
 
 /** Convert a GameState to a plain object safe for JSON/Supabase storage. */
@@ -22,6 +23,7 @@ export function serialise(state: GameState): Serialised {
     flagged: Array.from(state.flagged),
     blocked: Array.from(state.blocked),
     solved: Array.from(state.solved),
+    mineHits: Array.from(state.mineHits),
   };
 }
 
@@ -36,6 +38,7 @@ export function deserialise(data: Serialised): GameState {
     flagged: new Set(data.flagged),
     blocked: new Set(data.blocked),
     solved: new Set(data.solved),
+    mineHits: new Set(data.mineHits),
     mineCache: new Map(),
     numberCache: new Map(),
   };

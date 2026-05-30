@@ -26,10 +26,12 @@ export function checkSectorSolved(state: GameState, sx: number, sy: number): boo
   return true;
 }
 
-export function blockSector(state: GameState, sx: number, sy: number): GameState {
+export function blockSector(state: GameState, sx: number, sy: number, hitX: number, hitY: number): GameState {
   const newBlocked = new Set(state.blocked);
   newBlocked.add(sectorKey(sx, sy));
-  return { ...state, blocked: newBlocked };
+  const newMineHits = new Set(state.mineHits);
+  newMineHits.add(cellKey(hitX, hitY));
+  return { ...state, blocked: newBlocked, mineHits: newMineHits };
 }
 
 /** A blocked sector can be unblocked once all 8 surrounding sectors are solved. */

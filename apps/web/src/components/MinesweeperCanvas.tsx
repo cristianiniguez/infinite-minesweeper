@@ -47,12 +47,18 @@ function drawCell(
     ctx.fillRect(px, py, CELL, CELL);
     ctx.strokeStyle = '#991B1B';
     ctx.strokeRect(px + 0.5, py + 0.5, CELL - 1, CELL - 1);
-    if (isFlagged) {
-      ctx.fillStyle = '#FCD34D';
-      ctx.font = `${CELL * 0.55}px monospace`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
+    ctx.font = `${CELL * 0.55}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (state.mineHits.has(key)) {
+      ctx.fillText('💣', px + CELL / 2, py + CELL / 2);
+    } else if (isFlagged) {
       ctx.fillText('🚩', px + CELL / 2, py + CELL / 2);
+      if (!mine) {
+        ctx.fillStyle = '#EF4444';
+        ctx.font = `bold ${CELL * 0.65}px monospace`;
+        ctx.fillText('✕', px + CELL / 2, py + CELL / 2);
+      }
     }
   } else {
     ctx.fillStyle = isSolved ? '#166534' : '#374151';
@@ -152,6 +158,7 @@ export function MinesweeperCanvas({
     if (!canvas) return;
 
     function onMouseDown(e: MouseEvent) {
+      if (e.button !== 0) return;
       dragRef.current = { x: e.clientX, y: e.clientY, moved: false };
     }
 
