@@ -1,18 +1,18 @@
-export * from './seed.js';
-export * from './state.js';
-export * from './flood.js';
-export * from './sectors.js';
-export * from './serialise.js';
+export * from './seed';
+export * from './state';
+export * from './flood';
+export * from './sectors';
+export * from './serialise';
 
-import { isMine } from './seed.js';
-import { GameState, Action, cellKey, sectorKey, parseCell, parseSector } from './state.js';
-import { floodReveal } from './flood.js';
+import { isMine } from './seed';
+import { GameState, Action, cellKey, sectorKey, parseCell, parseSector } from './state';
+import { floodReveal } from './flood';
 import {
   getSector,
   blockSector,
   checkSectorSolved,
   tryUnblockNeighbors,
-} from './sectors.js';
+} from './sectors';
 
 /**
  * Pure reducer: apply one player action to the current state and return the next state.

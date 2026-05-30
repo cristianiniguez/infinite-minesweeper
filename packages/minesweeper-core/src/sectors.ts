@@ -1,5 +1,5 @@
-import { isMine } from './seed.js';
-import { GameState, cellKey, sectorKey } from './state.js';
+import { isMine } from './seed';
+import { GameState, cellKey, sectorKey } from './state';
 
 export const SECTOR_SIZE = 16;
 

@@ -1,4 +1,4 @@
-import { GameState, CellKey, SectorKey } from './state.js';
+import { GameState, CellKey, SectorKey } from './state';
 
 export interface Serialised {
   seed: number;

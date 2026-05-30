@@ -1,5 +1,5 @@
-import type { Tables, Json } from './types.js';
-import type { TypedSupabaseClient } from './client.js';
+import type { Tables, Json } from './types';
+import type { TypedSupabaseClient } from './client';
 import type { Serialised } from '@repo/minesweeper-core';
 
 export type Game = Tables<'games'>;

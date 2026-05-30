@@ -1,11 +1,11 @@
-export { createClient } from './client.js';
-export type { TypedSupabaseClient } from './client.js';
-export type { Game, GameState } from './queries.js';
+export { createClient } from './client';
+export type { TypedSupabaseClient } from './client';
+export type { Game, GameState } from './queries';
 export {
   listGames,
   getGameWithState,
   createGame,
   upsertGameState,
   deleteGame,
-} from './queries.js';
-export type { Database, Tables, TablesInsert, TablesUpdate } from './types.js';
+} from './queries';
+export type { Database, Tables, TablesInsert, TablesUpdate } from './types';

@@ -1,6 +1,6 @@
-import { isMine, countAdj } from './seed.js';
-import { GameState, cellKey, sectorKey } from './state.js';
-import { getSector } from './sectors.js';
+import { isMine, countAdj } from './seed';
+import { GameState, cellKey, sectorKey } from './state';
+import { getSector } from './sectors';
 
 function cachedIsMine(state: GameState, x: number, y: number): boolean {
   const key = cellKey(x, y);
