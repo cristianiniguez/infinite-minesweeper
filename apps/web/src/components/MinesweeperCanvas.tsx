@@ -13,6 +13,7 @@ function drawCell(
   x: number,
   y: number,
   state: GameState,
+  showMines: boolean,
 ) {
   const key = cellKey(x, y);
   const [sx, sy] = getSector(x, y);
@@ -61,16 +62,19 @@ function drawCell(
       }
     }
   } else {
-    ctx.fillStyle = isSolved ? '#166534' : '#374151';
+    const highlightMine = showMines && mine;
+    ctx.fillStyle = highlightMine ? '#7C1D1D' : isSolved ? '#166534' : '#374151';
     ctx.fillRect(px, py, CELL, CELL);
-    ctx.strokeStyle = '#4B5563';
+    ctx.strokeStyle = highlightMine ? '#991B1B' : '#4B5563';
     ctx.strokeRect(px + 0.5, py + 0.5, CELL - 1, CELL - 1);
 
+    ctx.font = `${CELL * 0.55}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     if (isFlagged) {
       ctx.fillStyle = '#FCD34D';
-      ctx.font = `${CELL * 0.55}px monospace`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
+      ctx.fillText('🚩', px + CELL / 2, py + CELL / 2);
+    } else if (isSolved && mine) {
       ctx.fillText('🚩', px + CELL / 2, py + CELL / 2);
     }
   }
@@ -79,9 +83,11 @@ function drawCell(
 export function MinesweeperCanvas({
   state,
   dispatch,
+  showMines = false,
 }: {
   state: GameState;
   dispatch: React.Dispatch<Action>;
+  showMines?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
@@ -101,7 +107,7 @@ export function MinesweeperCanvas({
 
     for (let cy = startCY; cy <= endCY; cy++) {
       for (let cx = startCX; cx <= endCX; cx++) {
-        drawCell(ctx, cx, cy, s);
+        drawCell(ctx, cx, cy, s, showMines);
       }
     }
 
@@ -121,7 +127,7 @@ export function MinesweeperCanvas({
       }
     }
     ctx.lineWidth = 1;
-  }, []);
+  }, [showMines]);
 
   useEffect(() => {
     render(state);

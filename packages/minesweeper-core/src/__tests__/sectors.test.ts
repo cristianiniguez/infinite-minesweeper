@@ -15,10 +15,10 @@ const SEED = 42;
 
 describe('getSector', () => {
   it('maps (0,0) to sector (0,0)', () => expect(getSector(0, 0)).toEqual([0, 0]));
-  it('maps (15,15) to sector (0,0)', () => expect(getSector(15, 15)).toEqual([0, 0]));
-  it('maps (16,0) to sector (1,0)', () => expect(getSector(16, 0)).toEqual([1, 0]));
+  it('maps (7,7) to sector (0,0)', () => expect(getSector(7, 7)).toEqual([0, 0]));
+  it('maps (8,0) to sector (1,0)', () => expect(getSector(8, 0)).toEqual([1, 0]));
   it('handles negative coords', () => expect(getSector(-1, -1)).toEqual([-1, -1]));
-  it('maps (-16,-16) to sector (-1,-1)', () => expect(getSector(-16, -16)).toEqual([-1, -1]));
+  it('maps (-8,-8) to sector (-1,-1)', () => expect(getSector(-8, -8)).toEqual([-1, -1]));
 });
 
 describe('getSectorCells', () => {

@@ -1,7 +1,7 @@
 import { isMine } from './seed';
 import { GameState, cellKey, sectorKey } from './state';
 
-export const SECTOR_SIZE = 16;
+export const SECTOR_SIZE = 8;
 
 export function getSector(x: number, y: number): [number, number] {
   return [Math.floor(x / SECTOR_SIZE), Math.floor(y / SECTOR_SIZE)];

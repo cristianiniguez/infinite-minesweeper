@@ -66,6 +66,15 @@ export async function upsertGameState(
   if (error) throw error;
 }
 
+export async function updateGameSeed(
+  client: TypedSupabaseClient,
+  gameId: string,
+  seed: number,
+): Promise<void> {
+  const { error } = await client.from('games').update({ seed }).eq('id', gameId);
+  if (error) throw error;
+}
+
 export async function deleteGame(client: TypedSupabaseClient, gameId: string): Promise<void> {
   const { error } = await client.from('games').delete().eq('id', gameId);
   if (error) throw error;

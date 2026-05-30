@@ -18,7 +18,7 @@ import {
  * Pure reducer: apply one player action to the current state and return the next state.
  *
  * REVEAL: flood-reveal if safe; block sector if mine; skip if blocked/already-revealed/flagged.
- *         First click on a mine is safe — the sector is not blocked and the cell is revealed solo.
+ *         First click adjusts the seed so the 3×3 zone around the click is mine-free.
  * FLAG:   toggle flag on unrevealed cells.
  * PAN:    translate the camera.
  */
@@ -35,15 +35,16 @@ export function applyAction(state: GameState, action: Action): GameState {
       const firstClick = !state.firstReveal;
       let newState: GameState = { ...state, firstReveal: true };
 
-      if (isMine(state.seed, x, y)) {
-        if (firstClick) {
-          // Safe first click: reveal this single cell without triggering mine logic
-          const newRevealed = new Set(newState.revealed);
-          newRevealed.add(key);
-          newState = { ...newState, revealed: newRevealed };
-        } else {
-          return blockSector(newState, sx, sy, x, y);
+      if (firstClick) {
+        // Shift seed until the 3×3 zone around the first click is entirely mine-free
+        let seed = newState.seed;
+        while (!_isSafeZone(seed, x, y)) seed++;
+        if (seed !== newState.seed) {
+          newState = { ...newState, seed, mineCache: new Map(), numberCache: new Map() };
         }
+        newState = floodReveal(newState, x, y);
+      } else if (isMine(newState.seed, x, y)) {
+        return blockSector(newState, sx, sy, x, y);
       } else {
         newState = floodReveal(newState, x, y);
       }
@@ -72,6 +73,16 @@ export function applyAction(state: GameState, action: Action): GameState {
       return { ...state, camX: state.camX + action.dx, camY: state.camY + action.dy };
     }
   }
+}
+
+/** Returns true when the 3×3 zone centered on (x,y) contains no mines for the given seed. */
+function _isSafeZone(seed: number, x: number, y: number): boolean {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (isMine(seed, x + dx, y + dy)) return false;
+    }
+  }
+  return true;
 }
 
 /** Find newly revealed cells, group by sector, and mark any that are now fully solved. */

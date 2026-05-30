@@ -6,6 +6,7 @@ export {
   getGameWithState,
   createGame,
   upsertGameState,
+  updateGameSeed,
   deleteGame,
 } from './queries';
 export type { Database, Tables, TablesInsert, TablesUpdate } from './types';
