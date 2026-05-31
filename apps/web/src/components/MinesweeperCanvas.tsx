@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { countAdj, isMine, SECTOR_SIZE, getSector, sectorKey, cellKey, canUnblock, canReveal } from '@repo/minesweeper-core';
+import { countAdj, isMine, SECTOR_SIZE, getSector, sectorKey, parseSector, cellKey, canUnblock, canReveal, findBlockedGroup } from '@repo/minesweeper-core';
 import type { GameState, Action } from '@repo/minesweeper-core';
 
 const CELL = 32;
@@ -453,12 +453,23 @@ export function MinesweeperCanvas({
       {selectedBlockedSector && (() => {
         const [bsx, bsy] = selectedBlockedSector;
         const ready = canUnblock(state, bsx, bsy);
-        const solvedCount = [-1, 0, 1].flatMap(dy =>
-          [-1, 0, 1].map(dx => {
-            if (dx === 0 && dy === 0) return false;
-            return state.solved.has(sectorKey(bsx + dx, bsy + dy));
-          })
-        ).filter(Boolean).length;
+        const group = findBlockedGroup(state, bsx, bsy);
+        const isGroup = group.size > 1;
+
+        // Collect external neighbors of the group
+        const externalNeighbors = new Set<string>();
+        for (const sk of group) {
+          const [gsx, gsy] = parseSector(sk);
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nsk = sectorKey(gsx + dx, gsy + dy);
+              if (!group.has(nsk)) externalNeighbors.add(nsk);
+            }
+          }
+        }
+        const solvedCount = [...externalNeighbors].filter(sk => state.solved.has(sk)).length;
+        const totalCount = externalNeighbors.size;
 
         return (
           <div
@@ -470,39 +481,55 @@ export function MinesweeperCanvas({
               onClick={e => e.stopPropagation()}
             >
               <p className="text-white text-sm font-semibold text-center leading-tight">
-                {ready ? 'This sector is ready to unblock!' : 'Solve neighboring sectors to unblock'}
+                {ready
+                  ? (isGroup ? 'This group is ready to unblock!' : 'This sector is ready to unblock!')
+                  : (isGroup ? 'Solve all sectors bordering this group to unblock' : 'Solve neighboring sectors to unblock')}
               </p>
 
-              <div className="grid grid-cols-3 gap-1">
-                {[-1, 0, 1].flatMap(dy =>
-                  [-1, 0, 1].map(dx => {
-                    const key = `${dx},${dy}`;
-                    if (dx === 0 && dy === 0) {
+              {isGroup ? (
+                <div className="flex flex-col items-center gap-2 w-full">
+                  <div className="text-amber-400 text-xs text-center">
+                    Group of {group.size} blocked sectors
+                  </div>
+                  <div className="w-full bg-gray-800 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full transition-all ${ready ? 'bg-green-500' : 'bg-blue-500'}`}
+                      style={{ width: `${totalCount > 0 ? (solvedCount / totalCount) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-1">
+                  {[-1, 0, 1].flatMap(dy =>
+                    [-1, 0, 1].map(dx => {
+                      const key = `${dx},${dy}`;
+                      if (dx === 0 && dy === 0) {
+                        return (
+                          <div key={key} className="w-10 h-10 flex items-center justify-center bg-red-950 border border-red-800 rounded text-base">
+                            💣
+                          </div>
+                        );
+                      }
+                      const solved = state.solved.has(sectorKey(bsx + dx, bsy + dy));
                       return (
-                        <div key={key} className="w-10 h-10 flex items-center justify-center bg-red-950 border border-red-800 rounded text-base">
-                          💣
+                        <div
+                          key={key}
+                          className={`w-10 h-10 flex items-center justify-center rounded border text-sm font-bold ${
+                            solved
+                              ? 'bg-green-900 border-green-600 text-green-300'
+                              : 'bg-gray-800 border-gray-600 text-gray-500'
+                          }`}
+                        >
+                          {solved ? '✓' : ''}
                         </div>
                       );
-                    }
-                    const solved = state.solved.has(sectorKey(bsx + dx, bsy + dy));
-                    return (
-                      <div
-                        key={key}
-                        className={`w-10 h-10 flex items-center justify-center rounded border text-sm font-bold ${
-                          solved
-                            ? 'bg-green-900 border-green-600 text-green-300'
-                            : 'bg-gray-800 border-gray-600 text-gray-500'
-                        }`}
-                      >
-                        {solved ? '✓' : ''}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+                    })
+                  )}
+                </div>
+              )}
 
               <p className="text-gray-400 text-xs">
-                {solvedCount} / 8 neighbors solved
+                {solvedCount} / {totalCount} neighbors solved
               </p>
 
               <button
