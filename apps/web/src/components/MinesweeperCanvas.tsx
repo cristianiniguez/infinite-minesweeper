@@ -303,7 +303,7 @@ export function MinesweeperCanvas({
           navigator.vibrate?.(50);
           dispatch({ type: 'FLAG', x: cx, y: cy });
         }
-      }, 500);
+      }, 300);
       touchRef.current = {
         touches: Array.from(e.touches),
         lastDist: null,
