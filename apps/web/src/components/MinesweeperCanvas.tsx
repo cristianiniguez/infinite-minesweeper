@@ -255,7 +255,10 @@ export function MinesweeperCanvas({
     function onContextMenu(e: MouseEvent) {
       e.preventDefault();
       const [cx, cy] = screenToCell(e.clientX, e.clientY, canvas);
-      dispatch({ type: 'FLAG', x: cx, y: cy });
+      const s = stateRef.current;
+      if (s.flagged.has(cellKey(cx, cy)) || canReveal(s, cx, cy)) {
+        dispatch({ type: 'FLAG', x: cx, y: cy });
+      }
     }
 
     function onWheel(e: WheelEvent) {
@@ -282,13 +285,24 @@ export function MinesweeperCanvas({
 
     function onTouchStart(e: TouchEvent) {
       e.preventDefault();
+      if (touchRef.current?.longPressTimer) {
+        clearTimeout(touchRef.current.longPressTimer);
+        touchRef.current.longPressTimer = null;
+      }
+      if (e.touches.length > 1) {
+        if (touchRef.current) touchRef.current.touches = Array.from(e.touches);
+        return;
+      }
       const t = e.touches[0]!;
       const longPressTimer = setTimeout(() => {
         if (!touchRef.current || touchRef.current.isLongPress) return;
-        touchRef.current.isLongPress = true;
-        navigator.vibrate?.(50);
         const [cx, cy] = screenToCell(t.clientX, t.clientY, canvas);
-        dispatch({ type: 'FLAG', x: cx, y: cy });
+        const s = stateRef.current;
+        if (s.flagged.has(cellKey(cx, cy)) || canReveal(s, cx, cy)) {
+          touchRef.current.isLongPress = true;
+          navigator.vibrate?.(50);
+          dispatch({ type: 'FLAG', x: cx, y: cy });
+        }
       }, 500);
       touchRef.current = {
         touches: Array.from(e.touches),
