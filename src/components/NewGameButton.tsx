@@ -3,8 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { storage } from '@/lib/storageInstance';
-import { createInitialState, serialise } from '@repo/minesweeper-core';
-import type { SaveData } from '@repo/minesweeper-core';
+import { createInitialState, serialise } from '@/lib/minesweeper-core';
+import type { SaveData } from '@/lib/minesweeper-core';
 
 export function NewGameButton({ onCreated }: { onCreated?: (game: SaveData) => void }) {
   const router = useRouter();

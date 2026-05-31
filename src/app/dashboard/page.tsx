@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { GameCard } from '@/components/GameCard';
 import { NewGameButton } from '@/components/NewGameButton';
 import { storage } from '@/lib/storageInstance';
-import type { SaveData } from '@repo/minesweeper-core';
+import type { SaveData } from '@/lib/minesweeper-core';
 
 export default function DashboardPage() {
   const [games, setGames] = useState<SaveData[]>([]);

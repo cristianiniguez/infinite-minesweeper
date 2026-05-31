@@ -1,5 +1,11 @@
-import type { IGameStorage } from '@repo/storage';
-import type { SaveData } from '@repo/minesweeper-core';
+import type { SaveData } from '@/lib/minesweeper-core';
+
+export interface IGameStorage {
+  listGames(): Promise<SaveData[]>;
+  loadGame(id: string): Promise<SaveData | null>;
+  saveGame(data: SaveData): Promise<void>;
+  deleteGame(id: string): Promise<void>;
+}
 
 export class LocalStorageGameStorage implements IGameStorage {
   private prefix = 'ms:game:';

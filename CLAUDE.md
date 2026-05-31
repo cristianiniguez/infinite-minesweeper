@@ -2,31 +2,36 @@
 
 ## What this project is
 
-Minesweeper with an infinite procedurally-generated world. Players reveal cells, flag mines, and solve sectors on an unbounded grid. No auth — games save locally on each device via `localStorage` (web) or `expo-file-system` (mobile, WIP).
+Minesweeper with an infinite procedurally-generated world delivered as a PWA. Players reveal cells, flag mines, and solve sectors on an unbounded grid. No auth — games save locally via `localStorage`. Installable on iOS (Safari) and Android (Chrome) like a native app.
 
-## Monorepo layout
+## Project layout
 
 ```
 /
-├── apps/web/                  # Next.js 16 App Router, Tailwind CSS 4
-├── apps/mobile/               # Expo (React Native) — WIP
-└── packages/
-    ├── minesweeper-core/      # Pure TS game logic — NO platform deps
-    └── storage/               # IGameStorage interface — NO platform deps
+├── public/
+│   ├── manifest.json          # PWA manifest
+│   └── icons/                 # PWA icons (192, 512, 512-maskable, apple-touch-icon)
+└── src/
+    ├── app/                   # Next.js App Router pages
+    ├── components/            # React components
+    └── lib/
+        ├── minesweeper-core/  # Pure TS game logic — NO platform deps
+        ├── hooks/             # useGameState, useAutoSave
+        ├── LocalStorageGameStorage.ts   # IGameStorage interface + implementation
+        └── storageInstance.ts           # singleton storage export
 ```
 
-- **pnpm workspaces** + **Turborepo** orchestrate all tasks.
-- Internal packages are referenced as `@repo/minesweeper-core` and `@repo/storage`.
+Single Next.js app — no monorepo, no Turborepo.
 
 ## Key commands
 
 ```bash
-pnpm dev                                      # start all apps in watch mode
-pnpm --filter @repo/web dev                   # web only (localhost:3000)
-pnpm build                                    # production build, all packages
-pnpm typecheck                                # tsc across all packages
-pnpm lint                                     # eslint across all packages
-pnpm --filter @repo/minesweeper-core test     # vitest unit tests for game logic
+pnpm dev          # start dev server (localhost:3000)
+pnpm build        # production build (PWA service worker generated)
+pnpm start        # serve production build
+pnpm typecheck    # tsc --noEmit
+pnpm lint         # eslint
+pnpm test         # vitest unit tests for game logic
 ```
 
 Always install packages with `--save-exact`:
@@ -35,7 +40,7 @@ pnpm add --save-exact <package>
 pnpm add -D --save-exact <package>
 ```
 
-## Game logic (`packages/minesweeper-core`)
+## Game logic (`src/lib/minesweeper-core`)
 
 **Rule: zero platform dependencies.** No `window`, `document`, `canvas`, React, or Node APIs.
 
@@ -47,25 +52,21 @@ Key files:
 - `serialise.ts` — `serialise`/`deserialise` convert `Set`/`Map` to plain arrays. `SaveData` extends `Serialised` with `id`, `name`, `createdAt`, `updatedAt`. `fromSaveData` rebuilds `GameState` from a `SaveData`.
 - `index.ts` — re-exports everything.
 
-All functions are pure (take state, return new state). Add unit tests in `src/__tests__/` using vitest for any new logic.
+All functions are pure (take state, return new state). Add unit tests in `__tests__/` using vitest for any new logic.
 
-## Storage package (`packages/storage`)
+## Storage (`src/lib/LocalStorageGameStorage.ts`)
 
-Defines the storage contract. Zero platform deps — both apps implement this interface with their own backends.
-
-- `interface.ts` — `IGameStorage` with `listGames`, `loadGame`, `saveGame`, `deleteGame`. All methods return `Promise<SaveData | ...>`.
-
-## Web app (`apps/web`)
-
-**No auth.** Open the URL → dashboard → play immediately.
-
-**Storage:** `localStorage` with key layout:
+`IGameStorage` interface defined inline (no separate package). `localStorage` key layout:
 - `ms:index` — `string[]` list of game ids
 - `ms:game:<id>` — `JSON<SaveData>` per game
 
+Singleton exported from `storageInstance.ts`.
+
+## App structure
+
+**No auth.** Open the URL → dashboard → play immediately.
+
 **Game state management:**
-- `lib/LocalStorageGameStorage.ts` — implements `IGameStorage`.
-- `lib/storageInstance.ts` — singleton `storage` instance used across the app.
 - `useGameState` hook — `useReducer` dispatching `Action` through `applyAction` from core. Takes `SaveData | null`.
 - `useAutoSave` hook — debounced 2s; immediate on mine hit or sector solve. Calls `storage.saveGame()`.
 - `MinesweeperCanvas` — DOM canvas renderer. Mouse/wheel listeners attached via `useEffect` on a canvas ref.
@@ -80,9 +81,16 @@ Defines the storage contract. Zero platform deps — both apps implement this in
 - `components/NewGameButton.tsx` — generates `id`/`seed`/`name`, calls `storage.saveGame()`, navigates to game.
 - `components/GameCard.tsx` — shows game name + last played; links to game, calls `storage.deleteGame()`.
 
+## PWA
+
+- Service worker via `@ducanh2912/next-pwa` — disabled in dev, active in production.
+- `public/manifest.json` — PWA manifest with `start_url: /dashboard`, `display: standalone`.
+- Icons needed in `public/icons/`: `icon-192.png`, `icon-512.png`, `icon-512-maskable.png`, `apple-touch-icon.png`.
+- iOS: install via Safari → Share → Add to Home Screen. Installed PWA has isolated localStorage from Safari browser storage.
+
 ## What's not built yet
 
-- Mobile app (`apps/mobile`) — scaffolded, not implemented. Will use `expo-file-system` + `FileSystemGameStorage`.
+- PWA icons (`public/icons/`) — placeholder dir exists, icons need to be generated from source SVG.
 - Game rename (inline edit on dashboard).
 - Loading skeletons, error boundaries.
 - Polish items from Phase 5 in PLAN.md.

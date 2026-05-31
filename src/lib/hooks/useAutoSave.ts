@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { serialise } from '@repo/minesweeper-core';
-import type { GameState, SaveData } from '@repo/minesweeper-core';
-import type { IGameStorage } from '@repo/storage';
+import { serialise } from '@/lib/minesweeper-core';
+import type { GameState, SaveData } from '@/lib/minesweeper-core';
+import type { IGameStorage } from '@/lib/LocalStorageGameStorage';
 
 export type SaveStatus = 'saved' | 'saving' | 'unsaved';
 

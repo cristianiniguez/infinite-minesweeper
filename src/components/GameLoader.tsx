@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { notFound } from 'next/navigation';
 import { GameView } from './GameView';
 import { storage } from '@/lib/storageInstance';
-import type { SaveData } from '@repo/minesweeper-core';
+import type { SaveData } from '@/lib/minesweeper-core';
 
 export function GameLoader({ id }: { id: string }) {
   const [saveData, setSaveData] = useState<SaveData | null | undefined>(undefined);

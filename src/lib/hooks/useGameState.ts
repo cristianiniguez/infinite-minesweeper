@@ -1,8 +1,8 @@
 'use client';
 
 import { useReducer } from 'react';
-import { applyAction, fromSaveData, createInitialState } from '@repo/minesweeper-core';
-import type { Action, GameState, SaveData } from '@repo/minesweeper-core';
+import { applyAction, fromSaveData, createInitialState } from '@/lib/minesweeper-core';
+import type { Action, GameState, SaveData } from '@/lib/minesweeper-core';
 
 function initState(saveData: SaveData | null): GameState {
   if (saveData) return fromSaveData(saveData);

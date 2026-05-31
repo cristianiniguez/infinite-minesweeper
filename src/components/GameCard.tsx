@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { storage } from '@/lib/storageInstance';
-import type { SaveData } from '@repo/minesweeper-core';
+import type { SaveData } from '@/lib/minesweeper-core';
 
 export function GameCard({ game, onDelete }: { game: SaveData; onDelete: () => void }) {
   const [deleting, setDeleting] = useState(false);

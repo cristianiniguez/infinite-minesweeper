@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { countAdj, isMine, SECTOR_SIZE, getSector, sectorKey, parseSector, cellKey, canUnblock, canReveal, findBlockedGroup } from '@repo/minesweeper-core';
-import type { GameState, Action } from '@repo/minesweeper-core';
+import { countAdj, isMine, SECTOR_SIZE, getSector, sectorKey, parseSector, cellKey, canUnblock, canReveal, findBlockedGroup } from '@/lib/minesweeper-core';
+import type { GameState, Action } from '@/lib/minesweeper-core';
 
 const CELL = 32;
 const MIN_ZOOM = 0.25;

@@ -7,7 +7,7 @@ import { SaveIndicator } from './SaveIndicator';
 import { useGameState } from '@/lib/hooks/useGameState';
 import { useAutoSave } from '@/lib/hooks/useAutoSave';
 import { storage } from '@/lib/storageInstance';
-import type { SaveData } from '@repo/minesweeper-core';
+import type { SaveData } from '@/lib/minesweeper-core';
 
 function StatChip({ label, value, title, color }: { label: string; value: number; title: string; color?: 'green' | 'yellow' | 'red' }) {
   const colorClass =

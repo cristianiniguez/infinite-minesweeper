@@ -1,27 +1,31 @@
 # Infinite Minesweeper
 
-Minesweeper with an infinite procedurally-generated world. Explore an unbounded grid, reveal cells, flag mines, and unlock adjacent sectors. No login required — games save locally in your browser.
+Minesweeper with an infinite procedurally-generated world, delivered as a PWA. Explore an unbounded grid, reveal cells, flag mines, and unlock adjacent sectors. No login required — games save locally in your browser. Installable on iOS and Android like a native app.
 
 ## Stack
 
 | Layer | Tech |
 |---|---|
-| Monorepo | pnpm workspaces + Turborepo |
-| Web | Next.js 16 (App Router) + Tailwind CSS |
-| Mobile | Expo (React Native) — in progress |
-| Shared game logic | `@repo/minesweeper-core` — pure TypeScript, zero platform deps |
-| Storage interface | `@repo/storage` — `IGameStorage` contract, no platform deps |
+| App | Next.js 16 (App Router) + Tailwind CSS 4 |
+| PWA | `@ducanh2912/next-pwa` (service worker + installability) |
+| Game logic | `src/lib/minesweeper-core` — pure TypeScript, zero platform deps |
+| Storage | `localStorage` via `LocalStorageGameStorage` |
 
-## Repo structure
+## Project structure
 
 ```
 /
-├── apps/
-│   ├── web/          # Next.js app (saves to localStorage)
-│   └── mobile/       # Expo app (WIP, will save to expo-file-system)
-└── packages/
-    ├── minesweeper-core/   # Game logic (seed, flood fill, sectors, SaveData type)
-    └── storage/            # IGameStorage interface
+├── public/
+│   ├── manifest.json      # PWA manifest
+│   └── icons/             # PWA icons (192, 512, 512-maskable, apple-touch-icon)
+└── src/
+    ├── app/               # Next.js pages (dashboard, game/[id])
+    ├── components/        # React components
+    └── lib/
+        ├── minesweeper-core/          # Pure game logic
+        ├── hooks/                     # useGameState, useAutoSave
+        ├── LocalStorageGameStorage.ts
+        └── storageInstance.ts
 ```
 
 ## Local setup
@@ -43,21 +47,16 @@ pnpm install
 pnpm dev
 ```
 
-Starts all apps in watch mode via Turborepo. Web app runs at `http://localhost:3000`. Open it — no login needed, start playing immediately.
-
-To run only the web app:
-
-```bash
-pnpm --filter @repo/web dev
-```
+Web app runs at `http://localhost:3000`. No login needed — start playing immediately.
 
 ## Other commands
 
 ```bash
-pnpm build        # production build (all packages)
-pnpm typecheck    # type-check all packages
-pnpm lint         # lint all packages
-pnpm --filter @repo/minesweeper-core test   # run core game logic unit tests
+pnpm build        # production build (generates PWA service worker)
+pnpm start        # serve production build
+pnpm typecheck    # tsc --noEmit
+pnpm lint         # eslint
+pnpm test         # vitest unit tests for game logic
 ```
 
 ## How it works
@@ -66,3 +65,4 @@ pnpm --filter @repo/minesweeper-core test   # run core game logic unit tests
 2. **Sectors** — the world is divided into 16×16 sectors. Revealing all non-mine cells in a sector marks it solved and unblocks adjacent sectors.
 3. **Local save** — game state (revealed cells, flags, camera position) is serialised to `SaveData` and written to `localStorage` with a 2-second debounce. Immediate save on mine hit or sector solve.
 4. **No auth** — games are device-local. Open the URL and play.
+5. **PWA** — service worker disabled in dev mode. Run `pnpm build && pnpm start` to test offline behaviour and installability.
