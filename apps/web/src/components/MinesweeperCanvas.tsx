@@ -267,7 +267,9 @@ export function MinesweeperCanvas({
         dispatch({ type: 'PAN', dx: dCamX, dy: dCamY });
       } else {
         const z = zoomRef.current;
-        dispatch({ type: 'PAN', dx: e.deltaX / z, dy: e.deltaY / z });
+        const dx = e.shiftKey ? (e.deltaY || e.deltaX) : e.deltaX;
+        const dy = e.shiftKey ? 0 : e.deltaY;
+        dispatch({ type: 'PAN', dx: dx / z, dy: dy / z });
       }
     }
 
