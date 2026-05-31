@@ -12,6 +12,13 @@ export interface Serialised {
   mineHits: CellKey[];
 }
 
+export interface SaveData extends Serialised {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** Convert a GameState to a plain object safe for JSON/Supabase storage. */
 export function serialise(state: GameState): Serialised {
   return {
@@ -25,6 +32,11 @@ export function serialise(state: GameState): Serialised {
     solved: Array.from(state.solved),
     mineHits: Array.from(state.mineHits),
   };
+}
+
+/** Rebuild a GameState from a stored SaveData. Caches start empty. */
+export function fromSaveData(data: SaveData): GameState {
+  return deserialise(data);
 }
 
 /** Rebuild a GameState from a stored Serialised snapshot. Caches start empty. */

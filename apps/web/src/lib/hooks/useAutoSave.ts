@@ -2,16 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { serialise } from '@repo/minesweeper-core';
-import type { GameState } from '@repo/minesweeper-core';
-import type { TypedSupabaseClient } from '@repo/supabase';
-import { upsertGameState } from '@repo/supabase';
+import type { GameState, SaveData } from '@repo/minesweeper-core';
+import type { IGameStorage } from '@repo/storage';
 
 export type SaveStatus = 'saved' | 'saving' | 'unsaved';
 
 export function useAutoSave(
-  gameId: string,
+  saveData: SaveData,
   state: GameState,
-  client: TypedSupabaseClient,
+  storage: IGameStorage,
 ): SaveStatus {
   const [status, setStatus] = useState<SaveStatus>('saved');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -28,12 +27,12 @@ export function useAutoSave(
     if (!isMounted.current) return;
     setStatus('saving');
     try {
-      await upsertGameState(client, gameId, serialise(s));
+      await storage.saveGame({ ...saveData, ...serialise(s), updatedAt: Date.now() });
       if (isMounted.current) setStatus('saved');
     } catch {
       if (isMounted.current) setStatus('unsaved');
     }
-  }, [client, gameId]);
+  }, [storage, saveData]);
 
   useEffect(() => {
     const mineHit = state.blocked.size > prevBlockedSize.current;

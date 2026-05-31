@@ -1,23 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { createClient } from '@/lib/supabase-client';
-import { deleteGame } from '@repo/supabase';
-import type { Game } from '@repo/supabase';
+import { storage } from '@/lib/storageInstance';
+import type { SaveData } from '@repo/minesweeper-core';
 
-export function GameCard({ game }: { game: Game }) {
-  const router = useRouter();
+export function GameCard({ game, onDelete }: { game: SaveData; onDelete: () => void }) {
   const [deleting, setDeleting] = useState(false);
 
   async function handleDelete() {
     if (!confirm(`Delete "${game.name}"?`)) return;
     setDeleting(true);
     try {
-      const client = createClient();
-      await deleteGame(client, game.id);
-      router.refresh();
+      await storage.deleteGame(game.id);
+      onDelete();
     } catch {
       setDeleting(false);
     }
@@ -28,7 +24,7 @@ export function GameCard({ game }: { game: Game }) {
       <div>
         <p className="font-medium text-white">{game.name}</p>
         <p className="text-sm text-gray-400">
-          {new Date(game.updated_at).toLocaleString()}
+          {new Date(game.updatedAt).toLocaleString()}
         </p>
       </div>
       <div className="flex gap-2">

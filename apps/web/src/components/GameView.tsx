@@ -1,30 +1,19 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { MinesweeperCanvas } from './MinesweeperCanvas';
 import { SaveIndicator } from './SaveIndicator';
 import { useGameState } from '@/lib/hooks/useGameState';
 import { useAutoSave } from '@/lib/hooks/useAutoSave';
-import { createClient } from '@/lib/supabase-client';
-import { useMemo, useState, useEffect, useRef } from 'react';
-import type { Game, GameState as DbGameState } from '@repo/supabase';
-import { updateGameSeed } from '@repo/supabase';
+import { storage } from '@/lib/storageInstance';
+import type { SaveData } from '@repo/minesweeper-core';
 
-export function GameView({ game, dbState }: { game: Game; dbState: DbGameState | null }) {
-  const client = useMemo(() => createClient(), []);
-  const [state, dispatch] = useGameState(game.seed, dbState);
-  const saveStatus = useAutoSave(game.id, state, client);
+export function GameView({ saveData }: { saveData: SaveData }) {
+  const [state, dispatch] = useGameState(saveData);
+  const saveStatus = useAutoSave(saveData, state, storage);
   const [showMines, setShowMines] = useState(false);
   const isDev = process.env.NODE_ENV === 'development';
-
-  // When first click adjusts the seed, persist the new seed to the games table
-  const seedPersistedRef = useRef(false);
-  useEffect(() => {
-    if (state.firstReveal && !seedPersistedRef.current && state.seed !== game.seed) {
-      seedPersistedRef.current = true;
-      updateGameSeed(client, game.id, state.seed).catch(console.error);
-    }
-  }, [state.firstReveal, state.seed, game.seed, game.id, client]);
 
   return (
     <div className="flex h-screen flex-col bg-gray-900">
@@ -33,7 +22,7 @@ export function GameView({ game, dbState }: { game: Game; dbState: DbGameState |
           <Link href="/dashboard" className="text-sm text-gray-400 hover:text-white">
             ← Dashboard
           </Link>
-          <h1 className="font-medium text-white">{game.name}</h1>
+          <h1 className="font-medium text-white">{saveData.name}</h1>
         </div>
         <div className="flex items-center gap-4">
           {isDev && (

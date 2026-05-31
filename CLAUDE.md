@@ -2,7 +2,7 @@
 
 ## What this project is
 
-Full-stack minesweeper with an infinite procedurally-generated world. Players reveal cells, flag mines, and solve sectors on an unbounded grid. Game state syncs to Supabase so sessions resume on any device.
+Minesweeper with an infinite procedurally-generated world. Players reveal cells, flag mines, and solve sectors on an unbounded grid. No auth — games save locally on each device via `localStorage` (web) or `expo-file-system` (mobile, WIP).
 
 ## Monorepo layout
 
@@ -12,11 +12,11 @@ Full-stack minesweeper with an infinite procedurally-generated world. Players re
 ├── apps/mobile/               # Expo (React Native) — WIP
 └── packages/
     ├── minesweeper-core/      # Pure TS game logic — NO platform deps
-    └── supabase/              # Typed Supabase client + DB query helpers
+    └── storage/               # IGameStorage interface — NO platform deps
 ```
 
 - **pnpm workspaces** + **Turborepo** orchestrate all tasks.
-- Internal packages are referenced as `@repo/minesweeper-core` and `@repo/supabase`.
+- Internal packages are referenced as `@repo/minesweeper-core` and `@repo/storage`.
 
 ## Key commands
 
@@ -44,63 +44,45 @@ Key files:
 - `state.ts` — `GameState` type, `Action` union, `createInitialState`. Caches (`mineCache`, `numberCache`, `mineHits`) are derived at runtime, not persisted.
 - `flood.ts` — `floodReveal` pure function; returns new state.
 - `sectors.ts` — `SECTOR_SIZE = 16`. `blockSector`, `checkSectorSolved`, `canUnblock`, `tryUnblockNeighbors`. A blocked sector unblocks when all 8 surrounding sectors are solved.
-- `serialise.ts` — `serialise`/`deserialise` convert `Set`/`Map` to plain arrays for Supabase storage.
+- `serialise.ts` — `serialise`/`deserialise` convert `Set`/`Map` to plain arrays. `SaveData` extends `Serialised` with `id`, `name`, `createdAt`, `updatedAt`. `fromSaveData` rebuilds `GameState` from a `SaveData`.
 - `index.ts` — re-exports everything.
 
 All functions are pure (take state, return new state). Add unit tests in `src/__tests__/` using vitest for any new logic.
 
-## Supabase package (`packages/supabase`)
+## Storage package (`packages/storage`)
 
-- `client.ts` — `createClient(url, anonKey)` returns typed client.
-- `queries.ts` — `listGames`, `getGameWithState`, `createGame`, `upsertGameState`, `deleteGame`.
-- `types.ts` — generated DB types (run `pnpm dlx supabase gen types typescript ...` to regenerate after schema changes).
+Defines the storage contract. Zero platform deps — both apps implement this interface with their own backends.
+
+- `interface.ts` — `IGameStorage` with `listGames`, `loadGame`, `saveGame`, `deleteGame`. All methods return `Promise<SaveData | ...>`.
 
 ## Web app (`apps/web`)
 
-**Auth flow:** email/password + Google OAuth via `@supabase/ssr`. `middleware.ts` protects `/dashboard` and `/game` routes.
+**No auth.** Open the URL → dashboard → play immediately.
+
+**Storage:** `localStorage` with key layout:
+- `ms:index` — `string[]` list of game ids
+- `ms:game:<id>` — `JSON<SaveData>` per game
 
 **Game state management:**
-- `useGameState` hook — `useReducer` dispatching `Action` through `applyAction` from core.
-- `useAutoSave` hook — debounced 2s; immediate on mine hit or sector solve. Calls `upsertGameState`.
+- `lib/LocalStorageGameStorage.ts` — implements `IGameStorage`.
+- `lib/storageInstance.ts` — singleton `storage` instance used across the app.
+- `useGameState` hook — `useReducer` dispatching `Action` through `applyAction` from core. Takes `SaveData | null`.
+- `useAutoSave` hook — debounced 2s; immediate on mine hit or sector solve. Calls `storage.saveGame()`.
 - `MinesweeperCanvas` — DOM canvas renderer. Mouse/wheel listeners attached via `useEffect` on a canvas ref.
 
 **Component map:**
-- `app/page.tsx` — redirects to `/dashboard` (authed) or `/login`.
-- `app/dashboard/page.tsx` — game list, new game button.
-- `app/game/[id]/page.tsx` — server component fetches state, passes to `GameView`.
+- `app/page.tsx` — redirects to `/dashboard`.
+- `app/dashboard/page.tsx` — client component; loads games from `storage.listGames()`.
+- `app/game/[id]/page.tsx` — thin server component passes `id` to `GameLoader`.
+- `components/GameLoader.tsx` — client component; loads `SaveData` from storage, renders `GameView`.
 - `components/GameView.tsx` — client component hosting `MinesweeperCanvas` + `SaveIndicator`.
 - `components/MinesweeperCanvas.tsx` — canvas renderer + input handling.
-
-**Supabase clients:**
-- `lib/supabase-client.ts` — browser client (uses `@supabase/ssr` `createBrowserClient`).
-- `lib/supabase-server.ts` — server client (uses `createServerClient` with cookie store).
-
-## Data model
-
-```
-games         — id, user_id, seed, name, status, created_at, updated_at
-game_states   — game_id (unique FK), cam_x, cam_y, flag_count,
-                revealed_cells (jsonb), flagged_cells (jsonb),
-                blocked_sectors (jsonb), solved_sectors (jsonb), saved_at
-```
-
-RLS: users see/modify only their own rows. `game_states` access is gated through `games.user_id`.
-
-`mineHits` is session-only — not persisted to DB.
-
-## Environment variables
-
-Web app reads from `apps/web/.env.local`:
-
-| Variable | Purpose |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-only admin key |
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Google OAuth client ID |
+- `components/NewGameButton.tsx` — generates `id`/`seed`/`name`, calls `storage.saveGame()`, navigates to game.
+- `components/GameCard.tsx` — shows game name + last played; links to game, calls `storage.deleteGame()`.
 
 ## What's not built yet
 
-- Mobile app (`apps/mobile`) — scaffolded, not implemented.
-- Cross-device conflict resolution (Phase 6 in PLAN.md).
-- Game rename, loading skeletons, error boundaries (Phase 7).
+- Mobile app (`apps/mobile`) — scaffolded, not implemented. Will use `expo-file-system` + `FileSystemGameStorage`.
+- Game rename (inline edit on dashboard).
+- Loading skeletons, error boundaries.
+- Polish items from Phase 5 in PLAN.md.

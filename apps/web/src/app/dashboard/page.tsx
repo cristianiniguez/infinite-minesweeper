@@ -1,22 +1,32 @@
-import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase-server';
-import { listGames } from '@repo/supabase';
+'use client';
+
+import { useEffect, useState } from 'react';
 import { GameCard } from '@/components/GameCard';
 import { NewGameButton } from '@/components/NewGameButton';
+import { storage } from '@/lib/storageInstance';
+import type { SaveData } from '@repo/minesweeper-core';
 
-export default async function DashboardPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+export default function DashboardPage() {
+  const [games, setGames] = useState<SaveData[]>([]);
 
-  const games = await listGames(supabase, user.id);
+  useEffect(() => {
+    storage.listGames().then(setGames);
+  }, []);
+
+  function onDelete(id: string) {
+    setGames(prev => prev.filter(g => g.id !== id));
+  }
+
+  function onCreated(game: SaveData) {
+    setGames(prev => [game, ...prev]);
+  }
 
   return (
     <div className="min-h-screen bg-gray-900 p-8">
       <div className="mx-auto max-w-2xl">
         <div className="mb-8 flex items-center justify-between">
           <h1 className="text-3xl font-bold">Your Games</h1>
-          <NewGameButton userId={user.id} />
+          <NewGameButton onCreated={onCreated} />
         </div>
 
         {games.length === 0 ? (
@@ -24,7 +34,7 @@ export default async function DashboardPage() {
         ) : (
           <div className="space-y-3">
             {games.map(game => (
-              <GameCard key={game.id} game={game} />
+              <GameCard key={game.id} game={game} onDelete={() => onDelete(game.id)} />
             ))}
           </div>
         )}

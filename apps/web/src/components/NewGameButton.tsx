@@ -2,21 +2,31 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { createClient } from '@/lib/supabase-client';
-import { createGame } from '@repo/supabase';
+import { storage } from '@/lib/storageInstance';
+import { createInitialState, serialise } from '@repo/minesweeper-core';
+import type { SaveData } from '@repo/minesweeper-core';
 
-export function NewGameButton({ userId }: { userId: string }) {
+export function NewGameButton({ onCreated }: { onCreated?: (game: SaveData) => void }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   async function handleClick() {
     setLoading(true);
     try {
-      const client = createClient();
+      const id = crypto.randomUUID();
       const seed = Math.floor(Math.random() * 2 ** 31);
       const name = `Game ${new Date().toLocaleDateString()}`;
-      const game = await createGame(client, userId, seed, name);
-      router.push(`/game/${game.id}`);
+      const now = Date.now();
+      const saveData: SaveData = {
+        id,
+        name,
+        createdAt: now,
+        updatedAt: now,
+        ...serialise(createInitialState(seed)),
+      };
+      await storage.saveGame(saveData);
+      onCreated?.(saveData);
+      router.push(`/game/${id}`);
     } catch {
       setLoading(false);
     }

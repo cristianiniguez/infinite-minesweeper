@@ -2,14 +2,13 @@
 
 ## Overview
 
-Full-stack cross-platform minesweeper with infinite procedural world, sector mechanics,
-user auth, and cloud save/load. Users can seamlessly switch between web and mobile.
+Cross-platform minesweeper with infinite procedural world and sector mechanics.
+No backend, no auth — games are saved locally on each device and playable immediately.
 
 **Stack:**
 - Monorepo: pnpm workspaces + Turborepo
-- Backend/Auth/DB: Supabase (Postgres + Auth + Realtime)
-- Web: Next.js 14 (App Router)
-- Mobile: Expo (React Native)
+- Web: Next.js 14 (App Router) — saves in `localStorage`
+- Mobile: Expo (React Native) — saves in `expo-file-system` (JSON files)
 - Shared logic: plain TypeScript package
 
 ---
@@ -21,14 +20,12 @@ user auth, and cloud save/load. Users can seamlessly switch between web and mobi
 ├── pnpm-workspace.yaml
 ├── turbo.json
 ├── package.json
-├── .env.example
 ├── apps/
 │   ├── web/                        # Next.js app
 │   └── mobile/                     # Expo app
 └── packages/
     ├── minesweeper-core/           # Pure game logic (no DOM, no React)
-    ├── supabase/                   # Shared Supabase client + DB types
-    └── ui/                         # Shared React components (optional, later)
+    └── storage/                    # Shared serialise/deserialise types (no platform deps)
 ```
 
 ---
@@ -81,101 +78,16 @@ user auth, and cloud save/load. Users can seamlessly switch between web and mobi
 
 5. **Create package scaffolds**
    ```bash
-   mkdir -p apps/web apps/mobile packages/minesweeper-core packages/supabase
-   ```
-
-6. **Add .env.example** at repo root:
-   ```
-   NEXT_PUBLIC_SUPABASE_URL=
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=
-   SUPABASE_SERVICE_ROLE_KEY=
-   NEXT_PUBLIC_GOOGLE_CLIENT_ID=
+   mkdir -p apps/web apps/mobile packages/minesweeper-core packages/storage
    ```
 
 **Done when:** `pnpm install` succeeds with no errors.
 
 ---
 
-## Phase 1 — Supabase Project Setup
+## Phase 1 — `packages/minesweeper-core`
 
-**Goal:** Database schema, RLS policies, and auth providers configured.
-
-### Steps
-
-1. **Create Supabase project** at supabase.com. Note the project URL and anon key.
-
-2. **Enable auth providers** in Supabase Dashboard → Authentication → Providers:
-   - Email / Password: enable
-   - Google: enable, paste OAuth client ID + secret from Google Cloud Console
-     (create credentials at console.cloud.google.com → APIs & Services → Credentials)
-
-3. **Run migrations** in Supabase SQL Editor:
-
-   ```sql
-   -- Games table
-   create table games (
-     id           uuid primary key default gen_random_uuid(),
-     user_id      uuid not null references auth.users(id) on delete cascade,
-     seed         bigint not null,
-     name         text not null default 'New Game',
-     status       text not null default 'active' check (status in ('active', 'abandoned')),
-     created_at   timestamptz not null default now(),
-     updated_at   timestamptz not null default now()
-   );
-
-   -- Game state table (one row per game, upserted on save)
-   create table game_states (
-     id               uuid primary key default gen_random_uuid(),
-     game_id          uuid not null references games(id) on delete cascade unique,
-     cam_x            float not null default 0,
-     cam_y            float not null default 0,
-     flag_count       int not null default 0,
-     revealed_cells   jsonb not null default '[]',  -- [[x,y], ...]
-     flagged_cells    jsonb not null default '[]',  -- [[x,y], ...]
-     blocked_sectors  jsonb not null default '[]',  -- [[sx,sy], ...]
-     solved_sectors   jsonb not null default '[]',  -- [[sx,sy], ...]
-     saved_at         timestamptz not null default now()
-   );
-
-   -- Auto-update updated_at on games
-   create or replace function update_updated_at()
-   returns trigger as $$
-   begin new.updated_at = now(); return new; end;
-   $$ language plpgsql;
-
-   create trigger games_updated_at
-     before update on games
-     for each row execute function update_updated_at();
-
-   -- RLS: users can only see/edit their own games
-   alter table games       enable row level security;
-   alter table game_states enable row level security;
-
-   create policy "owner access" on games
-     for all using (auth.uid() = user_id);
-
-   create policy "owner access via game" on game_states
-     for all using (
-       exists (
-         select 1 from games where games.id = game_states.game_id
-           and games.user_id = auth.uid()
-       )
-     );
-   ```
-
-4. **Generate TypeScript types** (run locally after schema is set):
-   ```bash
-   pnpm dlx supabase gen types typescript \
-     --project-id YOUR_PROJECT_ID > packages/supabase/src/types.ts
-   ```
-
-**Done when:** Tables exist, RLS is on, types file generated.
-
----
-
-## Phase 2 — `packages/minesweeper-core`
-
-**Goal:** All game logic extracted to a pure TypeScript package with zero platform deps.
+**Goal:** All game logic in a pure TypeScript package with zero platform deps.
 
 ### Package setup
 
@@ -183,7 +95,7 @@ user auth, and cloud save/load. Users can seamlessly switch between web and mobi
 cd packages/minesweeper-core
 pnpm init
 # package.json: { "name": "@repo/minesweeper-core", "main": "src/index.ts" }
-pnpm add -D typescript
+pnpm add -D typescript vitest
 ```
 
 ### Files to create
@@ -193,19 +105,23 @@ packages/minesweeper-core/src/
 ├── seed.ts          # seededRand, isMine, countAdj
 ├── flood.ts         # floodReveal (pure, returns new state)
 ├── sectors.ts       # blockSector, checkSectorSolved, canUnblock, tryUnblockNeighbors
-├── state.ts         # GameState type + createInitialState + applyAction
-├── serialise.ts     # toJSON / fromJSON (for Supabase storage)
+├── state.ts         # GameState type + createInitialState
+├── serialise.ts     # toSaveData / fromSaveData
 └── index.ts         # re-exports everything
 ```
 
 ### Key types (`state.ts`)
 
 ```typescript
-export type CellKey = string;      // "x,y"
-export type SectorKey = string;    // "sx,sy"
+export type CellKey = string;    // "x,y"
+export type SectorKey = string;  // "sx,sy"
 
 export interface GameState {
+  id: string;           // uuid generated on creation
+  name: string;         // user-editable label e.g. "Game 1"
   seed: number;
+  createdAt: number;    // Date.now()
+  updatedAt: number;    // Date.now() — updated on every save
   firstReveal: boolean;
   camX: number;
   camY: number;
@@ -213,7 +129,7 @@ export interface GameState {
   flagged: Set<CellKey>;
   blocked: Set<SectorKey>;
   solved: Set<SectorKey>;
-  // caches (not persisted — re-derived from seed)
+  // caches — never persisted, re-derived from seed on load
   mineCache: Map<CellKey, boolean>;
   numberCache: Map<CellKey, number>;
 }
@@ -222,150 +138,219 @@ export interface GameState {
 ### Serialisation (`serialise.ts`)
 
 ```typescript
-// Convert Sets to arrays for JSON storage, strip caches
-export function serialise(state: GameState): Serialised { ... }
+// Portable flat object — safe to JSON.stringify
+export interface SaveData {
+  id: string;
+  name: string;
+  seed: number;
+  createdAt: number;
+  updatedAt: number;
+  firstReveal: boolean;
+  camX: number;
+  camY: number;
+  revealed: [number, number][];   // Set → array of [x, y]
+  flagged:  [number, number][];
+  blocked:  [number, number][];   // Set → array of [sx, sy]
+  solved:   [number, number][];
+}
 
-// Rebuild Sets from arrays, caches start empty (lazy-filled)
-export function deserialise(data: Serialised): GameState { ... }
+export function toSaveData(state: GameState): SaveData { ... }
+export function fromSaveData(data: SaveData): GameState { ... }  // caches start empty
 ```
 
 ### Rules
 
 - No `window`, `document`, `canvas`, `React`, or any platform API
-- All functions are pure: take state, return new state (or mutations on a passed object — keep it consistent)
-- Full unit test coverage with `vitest` (add `pnpm add -D vitest`)
+- All functions are pure: take state in, return new state out
+- Unit tests with `vitest` for mine gen, flood fill, sector blocking/unblocking
 
-**Done when:** `pnpm typecheck` passes, basic unit tests pass for mine gen + flood fill + sector blocking/unblocking.
+**Done when:** `pnpm typecheck` passes, unit tests pass.
 
 ---
 
-## Phase 3 — `packages/supabase`
+## Phase 2 — `packages/storage`
 
-**Goal:** Shared Supabase client factory usable in both Next.js and Expo.
+**Goal:** Define the storage interface and shared types so both apps implement
+the same contract, with zero platform code in this package.
 
 ### Package setup
 
 ```bash
-cd packages/supabase
+cd packages/storage
 pnpm init
-# package.json: { "name": "@repo/supabase" }
-pnpm add @supabase/supabase-js
+# package.json: { "name": "@repo/storage" }
+pnpm add -D typescript
+pnpm add @repo/minesweeper-core
 ```
 
 ### Files
 
 ```
-packages/supabase/src/
-├── types.ts          # generated DB types (from Phase 1 step 4)
-├── client.ts         # createClient() — takes url + anonKey, returns typed client
-└── queries.ts        # listGames, getGameWithState, upsertGameState, createGame, deleteGame
+packages/storage/src/
+├── interface.ts     # IGameStorage interface
+└── index.ts
 ```
 
-### `queries.ts` shape
+### `interface.ts`
 
 ```typescript
-export async function listGames(client, userId): Promise<Game[]>
-export async function getGameWithState(client, gameId): Promise<{ game: Game, state: GameState | null }>
-export async function createGame(client, userId, seed, name): Promise<Game>
-export async function upsertGameState(client, gameId, serialised): Promise<void>
-export async function deleteGame(client, gameId): Promise<void>
+import type { SaveData } from '@repo/minesweeper-core';
+
+export interface IGameStorage {
+  /** Return all saved games, sorted by updatedAt desc */
+  listGames(): Promise<SaveData[]>;
+  /** Load one game by id. Returns null if not found. */
+  loadGame(id: string): Promise<SaveData | null>;
+  /** Create or overwrite a game save */
+  saveGame(data: SaveData): Promise<void>;
+  /** Delete a game by id */
+  deleteGame(id: string): Promise<void>;
+}
 ```
 
-**Done when:** TypeScript compiles, queries have correct return types from generated DB types.
+Each app provides its own concrete implementation of `IGameStorage`.
+The game hooks only depend on this interface — swapping storage backends
+requires zero changes to game logic or UI.
+
+**Done when:** TypeScript compiles. No tests needed (pure types).
 
 ---
 
-## Phase 4 — Next.js Web App
+## Phase 3 — Next.js Web App
 
-**Goal:** Working web app with auth, game list, and playable game with cloud save.
+**Goal:** Instant-play web app. No login screen. Open the URL → start playing.
+Games saved in `localStorage`.
 
 ### Setup
 
 ```bash
 cd apps/web
 pnpm create next-app@latest . --typescript --tailwind --eslint --app --src-dir
-pnpm add @supabase/ssr @supabase/supabase-js
-pnpm add @repo/minesweeper-core @repo/supabase
+pnpm add @repo/minesweeper-core @repo/storage
 ```
+
+### Storage implementation
+
+`localStorage` key layout:
+```
+ms:index          → string[]         list of game ids (ordered by updatedAt)
+ms:game:<id>      → JSON<SaveData>   one entry per game
+```
+
+```typescript
+// apps/web/src/lib/LocalStorageGameStorage.ts
+import type { IGameStorage } from '@repo/storage';
+import type { SaveData } from '@repo/minesweeper-core';
+
+export class LocalStorageGameStorage implements IGameStorage {
+  private prefix = 'ms:game:';
+  private indexKey = 'ms:index';
+
+  async listGames(): Promise<SaveData[]> { ... }
+  async loadGame(id: string): Promise<SaveData | null> { ... }
+  async saveGame(data: SaveData): Promise<void> { ... }
+  async deleteGame(id: string): Promise<void> { ... }
+}
+```
+
+> `localStorage` is synchronous but the interface is async — keeps it compatible
+> with the mobile implementation which is genuinely async.
 
 ### File structure
 
 ```
 apps/web/src/
 ├── app/
-│   ├── layout.tsx                  # root layout, SessionProvider
-│   ├── page.tsx                    # redirect: auth → /dashboard, unauth → /login
-│   ├── login/
-│   │   └── page.tsx                # email/password form + Google button
-│   ├── signup/
-│   │   └── page.tsx
+│   ├── layout.tsx              # root layout, fonts
+│   ├── page.tsx                # → redirect to /dashboard
 │   ├── dashboard/
-│   │   └── page.tsx                # game list + new game button
-│   ├── game/
-│   │   └── [id]/
-│   │       └── page.tsx            # game canvas page
-│   └── auth/
-│       └── callback/
-│           └── route.ts            # OAuth callback handler
+│   │   └── page.tsx            # game list + "New Game" button
+│   └── game/
+│       └── [id]/
+│           └── page.tsx        # game canvas page
 ├── components/
-│   ├── AuthForm.tsx
-│   ├── GameCard.tsx
-│   ├── MinesweeperCanvas.tsx       # canvas renderer (web-specific)
-│   └── SaveIndicator.tsx
-├── lib/
-│   ├── supabase-client.ts          # browser Supabase client (uses @supabase/ssr)
-│   ├── supabase-server.ts          # server Supabase client
-│   └── hooks/
-│       ├── useGameState.ts         # loads + saves game state
-│       └── useAutoSave.ts          # debounced save trigger
-└── middleware.ts                   # protect /dashboard and /game routes
+│   ├── GameCard.tsx            # name, last played, continue / delete
+│   ├── MinesweeperCanvas.tsx   # canvas renderer (web-specific)
+│   └── SaveIndicator.tsx       # "Saved" / "Saving…"
+└── lib/
+    ├── LocalStorageGameStorage.ts
+    ├── storageInstance.ts      # singleton: new LocalStorageGameStorage()
+    └── hooks/
+        ├── useGames.ts         # listGames, createGame, deleteGame
+        ├── useGameState.ts     # loadGame → deserialise → GameState in useReducer
+        └── useAutoSave.ts      # debounced serialise + saveGame
 ```
 
-### Auth flow
+### Dashboard page (`/dashboard`)
 
-1. **`/login`** — `supabase.auth.signInWithPassword()` for email, `supabase.auth.signInWithOAuth({ provider: 'google' })` for Google
-2. **`/auth/callback/route.ts`** — exchange OAuth code for session using `supabase.auth.exchangeCodeForSession()`
-3. **`middleware.ts`** — check session via `supabase.auth.getUser()`, redirect unauthenticated users to `/login`
-
-### Dashboard page
-
-- Fetch games with `listGames(client, user.id)`
-- "New Game" button: calls `createGame()` with a random seed, then `router.push('/game/[id]')`
-- Each card shows game name, last saved timestamp, and a "Continue" link
-- Delete button (with confirm) calls `deleteGame()`
+- On mount: `storage.listGames()` → render a `<GameCard>` for each
+- "New Game" button: generate a random seed + uuid, call `storage.saveGame()` with
+  a fresh `SaveData`, then `router.push('/game/<id>')`
+- `<GameCard>` shows: game name (editable), last-played timestamp, "Continue" link,
+  delete button (with confirm)
+- First visit: `localStorage` is empty → show empty state with a prompt to start a game
 
 ### Game page (`/game/[id]`)
 
-1. Server component fetches `getGameWithState(gameId)` — passes serialised state as prop
-2. Client component `MinesweeperCanvas` receives state, calls `deserialise()` from core, runs the canvas renderer (port the widget code from the chat, adapted as a React component with `useRef` for the canvas)
-3. `useAutoSave` hook: debounce 2s on any state change; immediate save on mine hit or sector solve. Calls `upsertGameState()`
-4. `SaveIndicator` shows: "Saved", "Saving…", or "Unsaved changes"
+1. `useGameState(id)`: calls `storage.loadGame(id)`, runs `fromSaveData()`,
+   puts result into `useReducer`
+2. `<MinesweeperCanvas>`: receives dispatch + state, renders the canvas
+   (port widget code into a React component with `useRef` on the `<canvas>`)
+3. `useAutoSave`: debounce 2 s on any state change; immediate save on mine hit
+   or sector solve/unblock — calls `toSaveData()` then `storage.saveGame()`
+4. `<SaveIndicator>`: "Saved ✓" / "Saving…"
 
 ### Canvas renderer notes
 
-- Extract the draw/event logic from the widget into `MinesweeperCanvas.tsx`
-- Use `useEffect` to attach mouse/wheel listeners to the canvas ref
-- Game state lives in `useReducer` — dispatch actions (REVEAL, FLAG, PAN)
-- Reducer calls `minesweeper-core` functions and returns new state
-- `useAutoSave` subscribes to state changes
+- `useEffect` to attach `mousedown`, `mousemove`, `mouseup`, `contextmenu`, `wheel`
+- Dispatch actions: `REVEAL | FLAG | PAN | SET_CAM`
+- Reducer calls `minesweeper-core` functions, returns new state (new object ref
+  so React detects the change and triggers auto-save)
 
-**Done when:** User can sign up, log in with Google, create games, play, and see saves persist on page refresh.
+**Done when:** User opens `/`, lands on dashboard, creates a game, plays it,
+refreshes the page, and resumes exactly where they left off.
 
 ---
 
-## Phase 5 — Expo Mobile App
+## Phase 4 — Expo Mobile App
 
-**Goal:** iOS/Android app with same auth + game list + playable game.
+**Goal:** iOS/Android app. Open it → start playing immediately.
+Games saved as JSON files via `expo-file-system`.
 
 ### Setup
 
 ```bash
 cd apps/mobile
 pnpm create expo-app@latest . --template blank-typescript
-pnpm add @supabase/supabase-js @react-native-async-storage/async-storage
-pnpm add expo-web-browser expo-auth-session expo-crypto
-pnpm add @shopify/react-native-skia   # canvas renderer
-pnpm add @repo/minesweeper-core @repo/supabase
+pnpm add expo-file-system expo-router
+pnpm add @shopify/react-native-skia
+pnpm add @repo/minesweeper-core @repo/storage
+```
+
+### Storage implementation
+
+Each game is a separate JSON file inside the app's private documents directory:
+
+```
+<DocumentDirectory>/minesweeper/
+  index.json          → string[]       ordered list of game ids
+  <id>.json           → SaveData       one file per game
+```
+
+```typescript
+// apps/mobile/lib/FileSystemGameStorage.ts
+import * as FileSystem from 'expo-file-system';
+import type { IGameStorage } from '@repo/storage';
+import type { SaveData } from '@repo/minesweeper-core';
+
+const BASE = FileSystem.documentDirectory + 'minesweeper/';
+
+export class FileSystemGameStorage implements IGameStorage {
+  async listGames(): Promise<SaveData[]> { ... }
+  async loadGame(id: string): Promise<SaveData | null> { ... }
+  async saveGame(data: SaveData): Promise<void> { ... }
+  async deleteGame(id: string): Promise<void> { ... }
+}
 ```
 
 ### File structure
@@ -373,142 +358,67 @@ pnpm add @repo/minesweeper-core @repo/supabase
 ```
 apps/mobile/
 ├── app/
-│   ├── _layout.tsx               # Expo Router root layout
-│   ├── index.tsx                 # redirect based on auth state
-│   ├── (auth)/
-│   │   ├── login.tsx
-│   │   └── signup.tsx
-│   ├── (app)/
-│   │   ├── dashboard.tsx
-│   │   └── game/
-│   │       └── [id].tsx
-│   └── auth/
-│       └── callback.tsx          # deep link OAuth handler
+│   ├── _layout.tsx             # Expo Router root layout
+│   ├── index.tsx               # → redirect to /dashboard
+│   ├── dashboard.tsx           # game list + "New Game" button
+│   └── game/
+│       └── [id].tsx            # game canvas page
 ├── components/
-│   ├── AuthForm.tsx
 │   ├── GameCard.tsx
-│   ├── MinesweeperSkia.tsx       # Skia canvas renderer
+│   ├── MinesweeperSkia.tsx     # Skia canvas renderer
 │   └── SaveIndicator.tsx
 └── lib/
-    ├── supabase.ts               # Supabase client with AsyncStorage session
-    └── hooks/                    # same useGameState + useAutoSave as web
+    ├── FileSystemGameStorage.ts
+    ├── storageInstance.ts      # singleton: new FileSystemGameStorage()
+    └── hooks/                  # same useGames, useGameState, useAutoSave as web
+                                # — only the import of storageInstance differs
 ```
 
 ### Key differences from web
 
-**Supabase client** — must use AsyncStorage for session persistence:
-```typescript
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient } from '@supabase/supabase-js';
+**No auth, no network** — the app is fully offline from the first launch.
+On cold start, `index.json` either doesn't exist (first run → show empty dashboard)
+or lists existing games.
 
-export const supabase = createClient(URL, ANON_KEY, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
-```
-
-**Google OAuth on mobile** — use `expo-auth-session`:
-```typescript
-import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri } from 'expo-auth-session';
-
-WebBrowser.maybeCompleteAuthSession();
-
-const redirectUri = makeRedirectUri({ scheme: 'infiniteminesweeper' });
-
-async function signInWithGoogle() {
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: redirectUri },
-  });
-  if (data?.url) await WebBrowser.openAuthSessionAsync(data.url, redirectUri);
-}
-```
-
-Add deep link scheme to `app.json`:
-```json
-{ "expo": { "scheme": "infiniteminesweeper" } }
-```
-
-**Canvas renderer** — replace the DOM canvas with `@shopify/react-native-skia`:
-- The rendering loop is the same logic; replace `ctx.fillRect` / `ctx.fillText` with Skia `<Rect>` / `<Text>` components
-- Touch events replace mouse events: `onTouch` for pan/tap, long press for flag
+**Canvas renderer** — use `@shopify/react-native-skia` instead of the DOM canvas:
+- Same draw logic; replace `ctx.fillRect(x,y,w,h)` with Skia `<Rect x y width height>`
+- Touch events replace mouse: `onTouch` (pan/tap), long-press for flag
+- `useGestureHandler` from `react-native-gesture-handler` for pinch-to-zoom (optional)
 - Game logic calls are identical — same `minesweeper-core` functions
 
-**Done when:** App runs in Expo Go, auth works, games load/save, same saves appear on both web and mobile.
+**Auto-save** — same `useAutoSave` hook, same debounce logic. `FileSystem.writeAsStringAsync`
+is async and fast enough for JSON payloads of typical game states.
+
+**Done when:** App launches immediately to the dashboard, games persist across
+app restarts, canvas is playable on touch.
 
 ---
 
-## Phase 6 — Cross-Platform Save Sync
-
-**Goal:** Picking up a game on one device continues exactly where the other left off.
-
-### Steps
-
-1. **On game load** — always fetch fresh state from Supabase (not just initial prop):
-   ```typescript
-   const { state } = await getGameWithState(client, gameId);
-   // compare saved_at with local last-save timestamp
-   // if remote is newer, use remote state
-   ```
-
-2. **Conflict banner** — if remote `saved_at` > local `saved_at` when the app resumes (AppState change on mobile, `visibilitychange` on web), show:
-   > "Newer save found from another device. Load it?"
-
-3. **Save debounce** — 2000ms after last action, or immediately on:
-   - Mine hit (sector blocked)
-   - Sector solved
-   - Sector unblocked
-
-4. **Optimistic UI** — don't wait for save to complete before updating the canvas.
-   Show "Saving…" indicator; revert + show error toast only on failure.
-
-**Done when:** Open game on web, make moves, switch to mobile, see the same board state within 2 seconds.
-
----
-
-## Phase 7 — Polish & Production
+## Phase 5 — Polish & Production
 
 ### Web
 
-- [ ] Loading skeleton for game list and game page
-- [ ] Error boundary around the canvas
-- [ ] Game rename (inline edit on dashboard)
-- [ ] Responsive layout (works on tablet/phone browser too)
+- [ ] Loading skeleton for game list and canvas
+- [ ] Error boundary around `<MinesweeperCanvas>`
+- [ ] Inline game rename on dashboard (click name to edit)
+- [ ] Responsive layout (tablet / narrow mobile browser)
 - [ ] `next/font` for Orbitron + Share Tech Mono
-- [ ] Deploy to Vercel: add env vars in project settings
+- [ ] `localStorage` quota guard: warn if approaching ~5 MB limit
+  (unlikely for normal play — each cell is ~10 bytes, millions of cells needed)
+- [ ] Deploy to Vercel (static export or edge runtime — no server needed)
 
 ### Mobile
 
-- [ ] Splash screen + app icon (use `expo-splash-screen`)
+- [ ] Splash screen + app icon (`expo-splash-screen`)
 - [ ] Haptic feedback on mine hit (`expo-haptics`)
 - [ ] Pinch-to-zoom on the canvas
 - [ ] Build with EAS: `pnpm dlx eas-cli build --platform all`
 
 ### Both
 
-- [ ] Handle Supabase rate limits (exponential backoff on save retries)
-- [ ] Offline detection — queue saves and flush when back online
-- [ ] Max games per user limit (e.g. 20) to keep storage reasonable
-
----
-
-## Environment Variables Reference
-
-| Variable | Used in | Description |
-|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | web, mobile | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | web, mobile | Supabase public anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | web (server only) | For admin operations if needed |
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | web | Google OAuth client ID |
-| `EXPO_PUBLIC_SUPABASE_URL` | mobile | Same URL, Expo env prefix |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | mobile | Same anon key, Expo env prefix |
-
-> Expo requires `EXPO_PUBLIC_` prefix for env vars exposed to the client bundle.
+- [ ] Max 50 saved games per device (soft limit — show warning, not hard block)
+- [ ] "Export game" — copy the raw `SaveData` JSON to clipboard so a user can
+  manually transfer a save between devices if they want
 
 ---
 
@@ -516,14 +426,14 @@ Add deep link scheme to `app.json`:
 
 ```
 Phase 0  →  Monorepo + pnpm workspaces + Turborepo
-Phase 1  →  Supabase schema + auth providers
-Phase 2  →  minesweeper-core package (pure logic)
-Phase 3  →  supabase package (client + queries)
-Phase 4  →  Next.js web app (auth + dashboard + game)
-Phase 5  →  Expo mobile app (same auth + game, Skia renderer)
-Phase 6  →  Cross-device sync
-Phase 7  →  Polish + deploy
+Phase 1  →  minesweeper-core package (pure logic + serialisation)
+Phase 2  →  storage package (IGameStorage interface)
+Phase 3  →  Next.js web app (localStorage, instant play)
+Phase 4  →  Expo mobile app (expo-file-system, instant play)
+Phase 5  →  Polish + deploy
 ```
 
-Each phase is independently testable. Phases 2–3 have no UI and can be developed
-and unit-tested before touching either app.
+Phases 1–2 are pure TypeScript with no UI. Build and unit-test them fully
+before touching either app. The only thing that differs between web and mobile
+is the storage implementation (100 lines) and the canvas renderer — all game
+logic, hooks, and types are shared.
