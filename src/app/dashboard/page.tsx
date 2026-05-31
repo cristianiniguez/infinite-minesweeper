@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { GameCard } from '@/components/GameCard';
+import { InstallPrompt } from '@/components/InstallPrompt';
 import { NewGameButton } from '@/components/NewGameButton';
 import { storage } from '@/lib/storageInstance';
 import type { SaveData } from '@/lib/minesweeper-core';
@@ -23,6 +24,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-900 p-8">
+      <InstallPrompt />
       <div className="mx-auto max-w-2xl">
         <div className="mb-8 flex items-center justify-between">
           <h1 className="text-3xl font-bold">Your Games</h1>
