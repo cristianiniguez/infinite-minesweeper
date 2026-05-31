@@ -1,12 +1,18 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { countAdj, isMine, SECTOR_SIZE, getSector, sectorKey, cellKey } from '@repo/minesweeper-core';
 import type { GameState, Action } from '@repo/minesweeper-core';
 
 const CELL = 32;
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 4;
 
 const NUM_COLORS = ['', '#3B82F6', '#22C55E', '#EF4444', '#1D4ED8', '#991B1B', '#0D9488', '#111827', '#6B7280'];
+
+function clamp(v: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, v));
+}
 
 function drawCell(
   ctx: CanvasRenderingContext2D,
@@ -24,8 +30,9 @@ function drawCell(
   const isSolved = state.solved.has(sk);
   const mine = isMine(state.seed, x, y);
 
-  const px = x * CELL - state.camX;
-  const py = y * CELL - state.camY;
+  // World-space coordinates — transform applied via ctx.setTransform
+  const px = x * CELL;
+  const py = y * CELL;
 
   if (isRevealed) {
     ctx.fillStyle = isSolved ? '#14532D' : '#1F2937';
@@ -91,19 +98,29 @@ export function MinesweeperCanvas({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const touchRef = useRef<{ touches: Touch[]; lastDist: number | null } | null>(null);
 
-  const render = useCallback((s: GameState) => {
+  const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(1);
+  // Keep zoomRef in sync each render
+  zoomRef.current = zoom;
+
+  const render = useCallback((s: GameState, z: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(z, 0, 0, z, -s.camX * z, -s.camY * z);
+    ctx.clearRect(s.camX, s.camY, canvas.width / z, canvas.height / z);
+
+    const viewW = canvas.width / z;
+    const viewH = canvas.height / z;
 
     const startCX = Math.floor(s.camX / CELL) - 1;
     const startCY = Math.floor(s.camY / CELL) - 1;
-    const endCX = startCX + Math.ceil(canvas.width / CELL) + 2;
-    const endCY = startCY + Math.ceil(canvas.height / CELL) + 2;
+    const endCX = startCX + Math.ceil(viewW / CELL) + 2;
+    const endCY = startCY + Math.ceil(viewH / CELL) + 2;
 
     for (let cy = startCY; cy <= endCY; cy++) {
       for (let cx = startCX; cx <= endCX; cx++) {
@@ -121,17 +138,19 @@ export function MinesweeperCanvas({
     ctx.lineWidth = 1;
     for (let ssy = startSY; ssy <= endSY; ssy++) {
       for (let ssx = startSX; ssx <= endSX; ssx++) {
-        const px = ssx * SECTOR_SIZE * CELL - s.camX;
-        const py = ssy * SECTOR_SIZE * CELL - s.camY;
+        const px = ssx * SECTOR_SIZE * CELL;
+        const py = ssy * SECTOR_SIZE * CELL;
         ctx.strokeRect(px, py, SECTOR_SIZE * CELL, SECTOR_SIZE * CELL);
       }
     }
     ctx.lineWidth = 1;
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   }, [showMines]);
 
   useEffect(() => {
-    render(state);
-  }, [state, render]);
+    render(state, zoom);
+  }, [state, zoom, render]);
 
   // Resize canvas to fill parent
   useEffect(() => {
@@ -140,25 +159,29 @@ export function MinesweeperCanvas({
     const observer = new ResizeObserver(() => {
       canvas.width = canvas.offsetWidth;
       canvas.height = canvas.offsetHeight;
-      render(state);
+      render(state, zoomRef.current);
     });
     observer.observe(canvas);
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
     return () => observer.disconnect();
-  }, [render, state]);
+  // render and state are intentionally excluded — ResizeObserver re-runs on size change only
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  function screenToCell(e: MouseEvent, canvas: HTMLCanvasElement | null): [number, number] {
-  if (!canvas) return [0, 0];
+  function screenToCell(clientX: number, clientY: number, canvas: HTMLCanvasElement | null): [number, number] {
+    if (!canvas) return [0, 0];
     const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const mx = clientX - rect.left;
+    const my = clientY - rect.top;
+    const z = zoomRef.current;
     return [
-      Math.floor((mx + state.camX) / CELL),
-      Math.floor((my + state.camY) / CELL),
+      Math.floor((mx / z + state.camX) / CELL),
+      Math.floor((my / z + state.camY) / CELL),
     ];
   }
 
+  // Mouse + touch event handlers
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -176,7 +199,8 @@ export function MinesweeperCanvas({
         dragRef.current.moved = true;
       }
       if (dragRef.current.moved) {
-        dispatch({ type: 'PAN', dx: -dx, dy: -dy });
+        const z = zoomRef.current;
+        dispatch({ type: 'PAN', dx: -dx / z, dy: -dy / z });
         dragRef.current.x = e.clientX;
         dragRef.current.y = e.clientY;
       }
@@ -185,7 +209,7 @@ export function MinesweeperCanvas({
     function onMouseUp(e: MouseEvent) {
       if (!dragRef.current) return;
       if (!dragRef.current.moved) {
-        const [cx, cy] = screenToCell(e, canvas);
+        const [cx, cy] = screenToCell(e.clientX, e.clientY, canvas);
         dispatch({ type: 'REVEAL', x: cx, y: cy });
       }
       dragRef.current = null;
@@ -193,13 +217,71 @@ export function MinesweeperCanvas({
 
     function onContextMenu(e: MouseEvent) {
       e.preventDefault();
-      const [cx, cy] = screenToCell(e, canvas);
+      const [cx, cy] = screenToCell(e.clientX, e.clientY, canvas);
       dispatch({ type: 'FLAG', x: cx, y: cy });
     }
 
     function onWheel(e: WheelEvent) {
       e.preventDefault();
-      dispatch({ type: 'PAN', dx: e.deltaX, dy: e.deltaY });
+      if (e.ctrlKey || e.metaKey) {
+        const factor = e.deltaY > 0 ? 1 / 1.15 : 1.15;
+        const oldZoom = zoomRef.current;
+        const newZoom = clamp(oldZoom * factor, MIN_ZOOM, MAX_ZOOM);
+        const rect = canvas!.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const dCamX = mx * (1 / oldZoom - 1 / newZoom);
+        const dCamY = my * (1 / oldZoom - 1 / newZoom);
+        zoomRef.current = newZoom;
+        setZoom(newZoom);
+        dispatch({ type: 'PAN', dx: dCamX, dy: dCamY });
+      } else {
+        const z = zoomRef.current;
+        dispatch({ type: 'PAN', dx: e.deltaX / z, dy: e.deltaY / z });
+      }
+    }
+
+    function onTouchStart(e: TouchEvent) {
+      e.preventDefault();
+      touchRef.current = { touches: Array.from(e.touches), lastDist: null };
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      e.preventDefault();
+      if (!touchRef.current) return;
+      const prev = touchRef.current.touches;
+      const curr = Array.from(e.touches);
+
+      if (curr.length === 1 && prev.length >= 1) {
+        const dx = curr[0]!.clientX - prev[0]!.clientX;
+        const dy = curr[0]!.clientY - prev[0]!.clientY;
+        const z = zoomRef.current;
+        dispatch({ type: 'PAN', dx: -dx / z, dy: -dy / z });
+      } else if (curr.length === 2 && prev.length >= 1) {
+        const dist = Math.hypot(
+          curr[0]!.clientX - curr[1]!.clientX,
+          curr[0]!.clientY - curr[1]!.clientY,
+        );
+        if (touchRef.current.lastDist !== null) {
+          const factor = dist / touchRef.current.lastDist;
+          const oldZoom = zoomRef.current;
+          const newZoom = clamp(oldZoom * factor, MIN_ZOOM, MAX_ZOOM);
+          const rect = canvas!.getBoundingClientRect();
+          const mx = (curr[0]!.clientX + curr[1]!.clientX) / 2 - rect.left;
+          const my = (curr[0]!.clientY + curr[1]!.clientY) / 2 - rect.top;
+          const dCamX = mx * (1 / oldZoom - 1 / newZoom);
+          const dCamY = my * (1 / oldZoom - 1 / newZoom);
+          zoomRef.current = newZoom;
+          setZoom(newZoom);
+          dispatch({ type: 'PAN', dx: dCamX, dy: dCamY });
+        }
+        touchRef.current.lastDist = dist;
+      }
+      touchRef.current.touches = curr;
+    }
+
+    function onTouchEnd() {
+      touchRef.current = null;
     }
 
     canvas.addEventListener('mousedown', onMouseDown);
@@ -207,6 +289,9 @@ export function MinesweeperCanvas({
     canvas.addEventListener('mouseup', onMouseUp);
     canvas.addEventListener('contextmenu', onContextMenu);
     canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', onTouchEnd);
 
     return () => {
       canvas.removeEventListener('mousedown', onMouseDown);
@@ -214,15 +299,68 @@ export function MinesweeperCanvas({
       canvas.removeEventListener('mouseup', onMouseUp);
       canvas.removeEventListener('contextmenu', onContextMenu);
       canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('touchstart', onTouchStart);
+      canvas.removeEventListener('touchmove', onTouchMove);
+      canvas.removeEventListener('touchend', onTouchEnd);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, state.camX, state.camY]);
 
+  function zoomTowardCenter(factor: number) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const oldZoom = zoomRef.current;
+    const newZoom = clamp(oldZoom * factor, MIN_ZOOM, MAX_ZOOM);
+    const mx = canvas.width / 2;
+    const my = canvas.height / 2;
+    const dCamX = mx * (1 / oldZoom - 1 / newZoom);
+    const dCamY = my * (1 / oldZoom - 1 / newZoom);
+    zoomRef.current = newZoom;
+    setZoom(newZoom);
+    dispatch({ type: 'PAN', dx: dCamX, dy: dCamY });
+  }
+
+  function handleCenter() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const z = zoomRef.current;
+    dispatch({
+      type: 'PAN',
+      dx: -canvas.width / (2 * z) - state.camX,
+      dy: -canvas.height / (2 * z) - state.camY,
+    });
+  }
+
   return (
-    <canvas
-      ref={canvasRef}
-      className="h-full w-full cursor-crosshair"
-      style={{ imageRendering: 'pixelated' }}
-    />
+    <div className="relative h-full w-full">
+      <canvas
+        ref={canvasRef}
+        className="h-full w-full cursor-crosshair"
+        style={{ imageRendering: 'pixelated', touchAction: 'none' }}
+      />
+      <div className="absolute bottom-4 right-4 flex flex-col gap-2">
+        <button
+          onClick={() => zoomTowardCenter(1.5)}
+          className="flex h-9 w-9 items-center justify-center rounded bg-gray-800 text-lg font-bold text-white shadow hover:bg-gray-700 active:bg-gray-600"
+          title="Zoom in"
+        >
+          +
+        </button>
+        <button
+          onClick={() => zoomTowardCenter(1 / 1.5)}
+          className="flex h-9 w-9 items-center justify-center rounded bg-gray-800 text-lg font-bold text-white shadow hover:bg-gray-700 active:bg-gray-600"
+          title="Zoom out"
+        >
+          −
+        </button>
+        <button
+          onClick={handleCenter}
+          className="flex h-9 w-9 items-center justify-center rounded bg-gray-800 text-lg text-white shadow hover:bg-gray-700 active:bg-gray-600"
+          title="Center view"
+        >
+          ⊕
+        </button>
+      </div>
+    </div>
   );
 }
