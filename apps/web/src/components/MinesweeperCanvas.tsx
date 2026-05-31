@@ -107,8 +107,15 @@ export function MinesweeperCanvas({
   const [selectedBlockedSector, setSelectedBlockedSector] = useState<[number, number] | null>(null);
   const [notAdjMsg, setNotAdjMsg] = useState(false);
   const notAdjTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Keep zoomRef in sync each render
+  const prevMineHitsSize = useRef(state.mineHits.size);
   zoomRef.current = zoom;
+
+  useEffect(() => {
+    if (state.mineHits.size > prevMineHitsSize.current) {
+      navigator.vibrate?.([80, 40, 80]);
+    }
+    prevMineHitsSize.current = state.mineHits.size;
+  }, [state.mineHits.size]);
 
   const render = useCallback((s: GameState, z: number) => {
     const canvas = canvasRef.current;
@@ -279,6 +286,7 @@ export function MinesweeperCanvas({
       const longPressTimer = setTimeout(() => {
         if (!touchRef.current || touchRef.current.isLongPress) return;
         touchRef.current.isLongPress = true;
+        navigator.vibrate?.(50);
         const [cx, cy] = screenToCell(t.clientX, t.clientY, canvas);
         dispatch({ type: 'FLAG', x: cx, y: cy });
       }, 500);
