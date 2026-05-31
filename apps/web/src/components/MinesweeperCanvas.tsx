@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { countAdj, isMine, SECTOR_SIZE, getSector, sectorKey, cellKey } from '@repo/minesweeper-core';
+import { countAdj, isMine, SECTOR_SIZE, getSector, sectorKey, cellKey, canUnblock } from '@repo/minesweeper-core';
 import type { GameState, Action } from '@repo/minesweeper-core';
 
 const CELL = 32;
@@ -99,9 +99,12 @@ export function MinesweeperCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const touchRef = useRef<{ touches: Touch[]; lastDist: number | null } | null>(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1);
+  const [selectedBlockedSector, setSelectedBlockedSector] = useState<[number, number] | null>(null);
   // Keep zoomRef in sync each render
   zoomRef.current = zoom;
 
@@ -128,11 +131,27 @@ export function MinesweeperCanvas({
       }
     }
 
-    // Sector boundaries
+    // Sector overlays + boundaries
     const startSX = Math.floor(startCX / SECTOR_SIZE);
     const startSY = Math.floor(startCY / SECTOR_SIZE);
     const endSX = Math.ceil(endCX / SECTOR_SIZE);
     const endSY = Math.ceil(endCY / SECTOR_SIZE);
+
+    for (let ssy = startSY; ssy <= endSY; ssy++) {
+      for (let ssx = startSX; ssx <= endSX; ssx++) {
+        const sk = sectorKey(ssx, ssy);
+        const px = ssx * SECTOR_SIZE * CELL;
+        const py = ssy * SECTOR_SIZE * CELL;
+        const sw = SECTOR_SIZE * CELL;
+        if (s.solved.has(sk)) {
+          ctx.fillStyle = 'rgba(34, 197, 94, 0.12)';
+          ctx.fillRect(px, py, sw, sw);
+        } else if (s.blocked.has(sk)) {
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.18)';
+          ctx.fillRect(px, py, sw, sw);
+        }
+      }
+    }
 
     ctx.strokeStyle = 'rgba(255,255,255,0.08)';
     ctx.lineWidth = 1;
@@ -210,7 +229,12 @@ export function MinesweeperCanvas({
       if (!dragRef.current) return;
       if (!dragRef.current.moved) {
         const [cx, cy] = screenToCell(e.clientX, e.clientY, canvas);
-        dispatch({ type: 'REVEAL', x: cx, y: cy });
+        const [sx, sy] = getSector(cx, cy);
+        if (stateRef.current.blocked.has(sectorKey(sx, sy))) {
+          setSelectedBlockedSector([sx, sy]);
+        } else {
+          dispatch({ type: 'REVEAL', x: cx, y: cy });
+        }
       }
       dragRef.current = null;
     }
@@ -306,6 +330,15 @@ export function MinesweeperCanvas({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, state.camX, state.camY]);
 
+  useEffect(() => {
+    if (!selectedBlockedSector) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setSelectedBlockedSector(null);
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedBlockedSector]);
+
   function zoomTowardCenter(factor: number) {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -338,6 +371,72 @@ export function MinesweeperCanvas({
         className="h-full w-full cursor-crosshair"
         style={{ imageRendering: 'pixelated', touchAction: 'none' }}
       />
+      {selectedBlockedSector && (() => {
+        const [bsx, bsy] = selectedBlockedSector;
+        const ready = canUnblock(state, bsx, bsy);
+        const solvedCount = [-1, 0, 1].flatMap(dy =>
+          [-1, 0, 1].map(dx => {
+            if (dx === 0 && dy === 0) return false;
+            return state.solved.has(sectorKey(bsx + dx, bsy + dy));
+          })
+        ).filter(Boolean).length;
+
+        return (
+          <div
+            className="absolute inset-0 flex items-center justify-center"
+            onClick={() => setSelectedBlockedSector(null)}
+          >
+            <div
+              className="bg-gray-900 border border-gray-600 rounded-xl p-5 shadow-2xl w-56 flex flex-col items-center gap-3"
+              onClick={e => e.stopPropagation()}
+            >
+              <p className="text-white text-sm font-semibold text-center leading-tight">
+                {ready ? 'This sector is ready to unblock!' : 'Solve neighboring sectors to unblock'}
+              </p>
+
+              <div className="grid grid-cols-3 gap-1">
+                {[-1, 0, 1].flatMap(dy =>
+                  [-1, 0, 1].map(dx => {
+                    const key = `${dx},${dy}`;
+                    if (dx === 0 && dy === 0) {
+                      return (
+                        <div key={key} className="w-10 h-10 flex items-center justify-center bg-red-950 border border-red-800 rounded text-base">
+                          💣
+                        </div>
+                      );
+                    }
+                    const solved = state.solved.has(sectorKey(bsx + dx, bsy + dy));
+                    return (
+                      <div
+                        key={key}
+                        className={`w-10 h-10 flex items-center justify-center rounded border text-sm font-bold ${
+                          solved
+                            ? 'bg-green-900 border-green-600 text-green-300'
+                            : 'bg-gray-800 border-gray-600 text-gray-500'
+                        }`}
+                      >
+                        {solved ? '✓' : ''}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <p className="text-gray-400 text-xs">
+                {solvedCount} / 8 neighbors solved
+              </p>
+
+              <button
+                onClick={() => setSelectedBlockedSector(null)}
+                className="mt-1 px-4 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="absolute bottom-4 right-4 flex flex-col gap-2">
         <button
           onClick={() => zoomTowardCenter(1.5)}
