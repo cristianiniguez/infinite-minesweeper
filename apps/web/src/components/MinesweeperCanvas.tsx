@@ -98,7 +98,7 @@ export function MinesweeperCanvas({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
-  const touchRef = useRef<{ touches: Touch[]; lastDist: number | null } | null>(null);
+  const touchRef = useRef<{ touches: Touch[]; lastDist: number | null; startX: number; startY: number; longPressTimer: ReturnType<typeof setTimeout> | null; isLongPress: boolean } | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -275,7 +275,21 @@ export function MinesweeperCanvas({
 
     function onTouchStart(e: TouchEvent) {
       e.preventDefault();
-      touchRef.current = { touches: Array.from(e.touches), lastDist: null };
+      const t = e.touches[0]!;
+      const longPressTimer = setTimeout(() => {
+        if (!touchRef.current || touchRef.current.isLongPress) return;
+        touchRef.current.isLongPress = true;
+        const [cx, cy] = screenToCell(t.clientX, t.clientY, canvas);
+        dispatch({ type: 'FLAG', x: cx, y: cy });
+      }, 500);
+      touchRef.current = {
+        touches: Array.from(e.touches),
+        lastDist: null,
+        startX: t.clientX,
+        startY: t.clientY,
+        longPressTimer,
+        isLongPress: false,
+      };
     }
 
     function onTouchMove(e: TouchEvent) {
@@ -287,9 +301,21 @@ export function MinesweeperCanvas({
       if (curr.length === 1 && prev.length >= 1) {
         const dx = curr[0]!.clientX - prev[0]!.clientX;
         const dy = curr[0]!.clientY - prev[0]!.clientY;
+        const totalDx = curr[0]!.clientX - touchRef.current.startX;
+        const totalDy = curr[0]!.clientY - touchRef.current.startY;
+        if (Math.abs(totalDx) > 5 || Math.abs(totalDy) > 5) {
+          if (touchRef.current.longPressTimer) {
+            clearTimeout(touchRef.current.longPressTimer);
+            touchRef.current.longPressTimer = null;
+          }
+        }
         const z = zoomRef.current;
         dispatch({ type: 'PAN', dx: -dx / z, dy: -dy / z });
       } else if (curr.length === 2 && prev.length >= 1) {
+        if (touchRef.current.longPressTimer) {
+          clearTimeout(touchRef.current.longPressTimer);
+          touchRef.current.longPressTimer = null;
+        }
         const dist = Math.hypot(
           curr[0]!.clientX - curr[1]!.clientX,
           curr[0]!.clientY - curr[1]!.clientY,
@@ -312,7 +338,30 @@ export function MinesweeperCanvas({
       touchRef.current.touches = curr;
     }
 
-    function onTouchEnd() {
+    function onTouchEnd(e: TouchEvent) {
+      if (!touchRef.current) return;
+      if (touchRef.current.longPressTimer) {
+        clearTimeout(touchRef.current.longPressTimer);
+        touchRef.current.longPressTimer = null;
+      }
+      if (!touchRef.current.isLongPress && e.changedTouches.length === 1) {
+        const t = e.changedTouches[0]!;
+        const totalDx = t.clientX - touchRef.current.startX;
+        const totalDy = t.clientY - touchRef.current.startY;
+        if (Math.abs(totalDx) <= 5 && Math.abs(totalDy) <= 5) {
+          const [cx, cy] = screenToCell(t.clientX, t.clientY, canvas);
+          const [sx, sy] = getSector(cx, cy);
+          if (stateRef.current.blocked.has(sectorKey(sx, sy))) {
+            setSelectedBlockedSector([sx, sy]);
+          } else if (canReveal(stateRef.current, cx, cy)) {
+            dispatch({ type: 'REVEAL', x: cx, y: cy });
+          } else if (stateRef.current.firstReveal) {
+            if (notAdjTimer.current) clearTimeout(notAdjTimer.current);
+            setNotAdjMsg(true);
+            notAdjTimer.current = setTimeout(() => setNotAdjMsg(false), 2000);
+          }
+        }
+      }
       touchRef.current = null;
     }
 
@@ -453,7 +502,7 @@ export function MinesweeperCanvas({
         </div>
       )}
 
-      <div className="absolute bottom-4 right-4 flex flex-col gap-2">
+      <div className="absolute right-4 flex flex-col gap-2" style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
         <button
           onClick={() => zoomTowardCenter(1.5)}
           className="flex h-9 w-9 items-center justify-center rounded bg-gray-800 text-lg font-bold text-white shadow hover:bg-gray-700 active:bg-gray-600"

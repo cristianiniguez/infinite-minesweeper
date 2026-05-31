@@ -16,7 +16,7 @@ export function GameView({ saveData }: { saveData: SaveData }) {
   const isDev = process.env.NODE_ENV === 'development';
 
   return (
-    <div className="flex h-screen flex-col bg-gray-900">
+    <div className="flex flex-col bg-gray-900" style={{ height: '100dvh' }}>
       <header className="flex items-center justify-between border-b border-gray-700 px-4 py-2">
         <div className="flex items-center gap-4">
           <Link href="/dashboard" className="text-sm text-gray-400 hover:text-white">
