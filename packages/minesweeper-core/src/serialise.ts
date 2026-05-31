@@ -19,7 +19,7 @@ export interface SaveData extends Serialised {
   updatedAt: number;
 }
 
-/** Convert a GameState to a plain object safe for JSON/Supabase storage. */
+/** Convert a GameState to a plain object safe for JSON storage. */
 export function serialise(state: GameState): Serialised {
   return {
     seed: state.seed,
