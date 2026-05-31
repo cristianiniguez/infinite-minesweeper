@@ -1,6 +1,7 @@
 {
   "name": "infinite-minesweeper",
   "version": "0.0.0",
+  "description": "Infinite procedurally-generated Minesweeper PWA",
   "private": true,
   "scripts": {
     "dev": "next dev",
