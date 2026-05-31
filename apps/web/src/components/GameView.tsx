@@ -9,13 +9,16 @@ import { useAutoSave } from '@/lib/hooks/useAutoSave';
 import { storage } from '@/lib/storageInstance';
 import type { SaveData } from '@repo/minesweeper-core';
 
-function StatChip({ label, value, title, color }: { label: string; value: number; title: string; color?: 'green' }) {
+function StatChip({ label, value, title, color }: { label: string; value: number; title: string; color?: 'green' | 'yellow' | 'red' }) {
+  const colorClass =
+    color === 'green' ? 'bg-green-900/60 text-green-300' :
+    color === 'yellow' ? 'bg-yellow-900/60 text-yellow-300' :
+    color === 'red' ? 'bg-red-900/60 text-red-300' :
+    'bg-gray-800 text-gray-300';
   return (
     <div
       title={title}
-      className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-        color === 'green' ? 'bg-green-900/60 text-green-300' : 'bg-gray-800 text-gray-300'
-      }`}
+      className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${colorClass}`}
     >
       <span>{label}</span>
       <span>{value}</span>
@@ -45,10 +48,10 @@ export function GameView({ saveData }: { saveData: SaveData }) {
         </h1>
 
         <div className="flex shrink-0 items-center gap-1.5">
-          <StatChip label="🚩" value={state.flagged.size} title="Flags" />
-          <StatChip label="🔒" value={state.blocked.size} title="Blocked" />
-          <StatChip label="✓" value={state.solved.size} title="Solved" color="green" />
           <SaveIndicator status={saveStatus} />
+          <StatChip label="🚩" value={state.flagged.size} title="Flags" color="yellow" />
+          <StatChip label="🔒" value={state.blocked.size} title="Blocked" color="red" />
+          <StatChip label="✓" value={state.solved.size} title="Solved" color="green" />
           {isDev && (
             <button
               onClick={() => setShowMines(v => !v)}
