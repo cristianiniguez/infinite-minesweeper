@@ -15,6 +15,23 @@ import {
 } from './sectors';
 
 /**
+ * Returns true if the player may reveal (x, y):
+ * - always on the very first click
+ * - otherwise only when at least one of the 8 neighbors is already revealed and mine-free
+ */
+export function canReveal(state: GameState, x: number, y: number): boolean {
+  if (!state.firstReveal) return true;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const nk = cellKey(x + dx, y + dy);
+      if (state.revealed.has(nk) && !isMine(state.seed, x + dx, y + dy)) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Pure reducer: apply one player action to the current state and return the next state.
  *
  * REVEAL: flood-reveal if safe; block sector if mine; skip if blocked/already-revealed/flagged.
@@ -28,6 +45,7 @@ export function applyAction(state: GameState, action: Action): GameState {
       const { x, y } = action;
       const key = cellKey(x, y);
       if (state.revealed.has(key) || state.flagged.has(key)) return state;
+      if (!canReveal(state, x, y)) return state;
 
       const [sx, sy] = getSector(x, y);
       if (state.blocked.has(sectorKey(sx, sy))) return state;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { countAdj, isMine, SECTOR_SIZE, getSector, sectorKey, cellKey, canUnblock } from '@repo/minesweeper-core';
+import { countAdj, isMine, SECTOR_SIZE, getSector, sectorKey, cellKey, canUnblock, canReveal } from '@repo/minesweeper-core';
 import type { GameState, Action } from '@repo/minesweeper-core';
 
 const CELL = 32;
@@ -105,6 +105,8 @@ export function MinesweeperCanvas({
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1);
   const [selectedBlockedSector, setSelectedBlockedSector] = useState<[number, number] | null>(null);
+  const [notAdjMsg, setNotAdjMsg] = useState(false);
+  const notAdjTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Keep zoomRef in sync each render
   zoomRef.current = zoom;
 
@@ -232,8 +234,12 @@ export function MinesweeperCanvas({
         const [sx, sy] = getSector(cx, cy);
         if (stateRef.current.blocked.has(sectorKey(sx, sy))) {
           setSelectedBlockedSector([sx, sy]);
-        } else {
+        } else if (canReveal(stateRef.current, cx, cy)) {
           dispatch({ type: 'REVEAL', x: cx, y: cy });
+        } else if (stateRef.current.firstReveal) {
+          if (notAdjTimer.current) clearTimeout(notAdjTimer.current);
+          setNotAdjMsg(true);
+          notAdjTimer.current = setTimeout(() => setNotAdjMsg(false), 2000);
         }
       }
       dragRef.current = null;
@@ -436,6 +442,14 @@ export function MinesweeperCanvas({
           </div>
         );
       })()}
+
+      {notAdjMsg && (
+        <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center">
+          <div className="rounded-lg bg-gray-900/90 px-4 py-2 text-sm text-yellow-300 shadow-lg">
+            Can only reveal cells adjacent to an uncovered area
+          </div>
+        </div>
+      )}
 
       <div className="absolute bottom-4 right-4 flex flex-col gap-2">
         <button
